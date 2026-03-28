@@ -3,6 +3,9 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_login, is_admin
+require_login()
+
 from utils.constants import (
     PARTS_HEADERS,
     PARTS_TAB,
@@ -21,8 +24,6 @@ from utils.sheets_db import (
     update_record,
 )
 from utils.ui import (
-    admin_login_widget,
-    check_admin_access,
     get_spreadsheet_connection,
     init_page,
 )
@@ -44,7 +45,6 @@ def to_float(value):
 
 init_page("Stock Manager")
 st.title("Stock Manager")
-admin_login_widget()
 
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
@@ -476,7 +476,7 @@ with st.form("add_part_form", clear_on_submit=True):
 st.markdown("---")
 st.subheader("Edit / Delete Part")
 if records:
-    if check_admin_access():
+    if is_admin():
         option_map = {
             part_option_label(r): r
             for r in records

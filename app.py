@@ -2,6 +2,11 @@ from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
+from utils.auth import is_logged_in, is_admin, logout
+
+# Check if logged in - redirect to login if not
+if not is_logged_in():
+    st.switch_page("pages/0_🔐_Login.py")
 
 from utils.constants import (
     CONTACTS_HEADERS,
@@ -55,14 +60,27 @@ init_page("Dashboard")
 
 # Sidebar setup
 with st.sidebar:
-    st.markdown("### ⚙️ Shree Tex Fabb")
+    st.sidebar.write(f"👤 {st.session_state.get('user_fullname', 'User')}")
+    st.caption(f"Role: {st.session_state.get('user_role', 'unknown').capitalize()}")
+    st.markdown("---")
+    if st.button("🔑 Change Password", use_container_width=True):
+        st.switch_page("pages/9_Change_Password.py")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout()
+        st.rerun()
+    st.sidebar.image("logo.png", width=80)
+    st.sidebar.markdown("### Satyam Tex Fabb")
     st.caption("📍 Bhilwara, Rajasthan")
     st.caption(f"📅 {date.today().strftime('%A, %B %d, %Y')}")
     st.markdown("---")
 
 # Header
-st.markdown("# ⚙️ Shree Tex Fabb")
-st.markdown("<p style='color: #6B7280; margin-top: -20px;'>Bhilwara, Rajasthan</p>", unsafe_allow_html=True)
+col1, col2 = st.columns([1, 6])
+with col1:
+    st.image("logo.png", width=80)
+with col2:
+    st.markdown("# Satyam Tex Fabb")
+    st.markdown("*Bhilwara, Rajasthan · Since 1994*")
 st.markdown("---")
 
 today = date.today().strftime("%A, %B %d, %Y")

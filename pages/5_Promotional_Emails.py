@@ -1,8 +1,10 @@
 from datetime import datetime
 
-from google import genai
 import pandas as pd
 import streamlit as st
+
+from utils.auth import require_login, is_admin
+require_login()
 
 from utils.constants import (
     CONTACTS_HEADERS,
@@ -17,6 +19,117 @@ from utils.whatsapp_sender import send_whatsapp_message
 
 EMAIL_TYPE = "Promotional"
 OPEN_LEAD_STATUSES = {"new", "contacted", "interested", "negotiation"}
+TEMPLATES = {
+    "New Stock Arrived": {
+        "subject": "New Stock Available - {part_name} | Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+We are pleased to inform you that we have received fresh stock of {part_name} at Satyam Tex Fabb.
+
+Quantity Available: {quantity}
+Price: Rs {price} per unit
+
+This is a limited stock update and we recommend placing your order at the earliest to avoid delays.
+
+For orders or enquiries, please contact us directly.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "Festival Offer": {
+        "subject": "Exclusive Festival Offer from Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+Warm greetings from Satyam Tex Fabb!
+
+On the occasion of {festival_name}, we are delighted to offer you a special discount of {discount}% on selected machinery parts.
+
+Offer valid till: {valid_till}
+
+We value your continued association with us and look forward to serving your machinery parts requirements.
+
+For orders, please contact us at your earliest convenience.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "Payment Follow-up": {
+        "subject": "Friendly Follow-up - Outstanding Payment | Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+Hope this message finds you well.
+
+We would like to draw your attention to the outstanding payment of Rs {amount} against Invoice No. {invoice_number}, which was due on {due_date}.
+
+We request you to kindly arrange the payment at your earliest convenience. If the payment has already been processed, please ignore this message.
+
+For any queries, feel free to reach out to us.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "New Product Launch": {
+        "subject": "Introducing {product_name} - Now Available at Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+We are excited to announce the availability of {product_name} at Satyam Tex Fabb.
+
+{product_description}
+
+As a valued customer, you get early access to this new addition to our inventory.
+
+For pricing and availability, please contact us directly.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "Service Announcement": {
+        "subject": "Important Service Update from Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+Greetings from Satyam Tex Fabb!
+
+We would like to inform you about {announcement}.
+
+{details}
+
+We remain committed to providing you with the best quality machinery parts and service.
+
+For further information, please do not hesitate to contact us.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "Bulk Order Discount": {
+        "subject": "Special Bulk Order Offer - Satyam Tex Fabb",
+        "body": """Dear {customer_name},
+
+Greetings from Satyam Tex Fabb!
+
+We are pleased to offer you a special discount of {discount}% on bulk orders above {min_quantity} units of {part_name}.
+
+This is a limited time offer valid till {valid_till}.
+
+Place your order today and take advantage of this exclusive offer.
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+    "Custom Message": {
+        "subject": "{subject}",
+        "body": """{message}
+
+Warm regards,
+Satyam Tex Fabb
+Bhilwara, Rajasthan""",
+    },
+}
 
 
 init_page("Promotional Emails")
@@ -55,6 +168,70 @@ if not audience_rows:
     st.stop()
 
 all_df = pd.DataFrame(audience_rows)
+
+st.subheader("📧 Email Template Composer")
+template_name = st.selectbox("Select Template", options=list(TEMPLATES.keys()))
+bulk_mode = st.checkbox("Compose for bulk recipients", value=True)
+default_customer_name = "Valued Customer" if bulk_mode else "Valued Customer"
+
+template_values = {"customer_name": default_customer_name}
+
+if template_name == "New Stock Arrived":
+    template_values["customer_name"] = st.text_input("Customer Name", value=default_customer_name)
+    template_values["part_name"] = st.text_input("Part Name")
+    template_values["quantity"] = st.text_input("Quantity")
+    template_values["price"] = st.text_input("Price")
+elif template_name == "Festival Offer":
+    template_values["customer_name"] = st.text_input("Customer Name", value=default_customer_name)
+    template_values["festival_name"] = st.text_input("Festival Name")
+    template_values["discount"] = st.text_input("Discount (%)")
+    template_values["valid_till"] = st.date_input("Valid Till").isoformat()
+elif template_name == "Payment Follow-up":
+    customer_options = ["Valued Customer"] + sorted(all_df["Name"].dropna().astype(str).unique().tolist())
+    default_idx = 0
+    if not bulk_mode and len(customer_options) > 1:
+        default_idx = 1
+    template_values["customer_name"] = st.selectbox(
+        "Customer Name",
+        options=customer_options,
+        index=default_idx,
+    )
+    template_values["amount"] = st.text_input("Outstanding Amount")
+    template_values["invoice_number"] = st.text_input("Invoice Number")
+    template_values["due_date"] = st.date_input("Due Date").isoformat()
+elif template_name == "New Product Launch":
+    template_values["customer_name"] = st.text_input("Customer Name", value=default_customer_name)
+    template_values["product_name"] = st.text_input("Product Name")
+    template_values["product_description"] = st.text_area("Product Description", height=120)
+elif template_name == "Service Announcement":
+    template_values["customer_name"] = st.text_input("Customer Name", value=default_customer_name)
+    template_values["announcement"] = st.text_input("Announcement Title")
+    template_values["details"] = st.text_area("Details", height=120)
+elif template_name == "Bulk Order Discount":
+    template_values["customer_name"] = st.text_input("Customer Name", value=default_customer_name)
+    template_values["part_name"] = st.text_input("Part Name")
+    template_values["discount"] = st.text_input("Discount (%)")
+    template_values["min_quantity"] = st.text_input("Minimum Quantity")
+    template_values["valid_till"] = st.date_input("Valid Till", key="bulk_valid_till").isoformat()
+elif template_name == "Custom Message":
+    template_values["subject"] = st.text_input("Custom Subject")
+    template_values["message"] = st.text_area("Message", height=150)
+
+if st.button("Compose Email", type="primary"):
+    selected_template = TEMPLATES[template_name]
+    try:
+        composed_subject = selected_template["subject"].format(**template_values)
+        composed_body = selected_template["body"].format(**template_values)
+        st.session_state["promo_subject"] = composed_subject.strip()
+        st.session_state["promo_body"] = composed_body.strip()
+        st.success("✅ Email composed! Scroll down to select recipients and send.")
+        with st.expander("Preview Composed Email", expanded=True):
+            st.markdown(f"**Subject:** {composed_subject}")
+            st.text_area("Email Preview", value=composed_body, height=260, disabled=True)
+    except KeyError as exc:
+        st.error(f"Missing required field for template: {exc}")
+
+st.markdown("---")
 
 st.subheader("Audience Filter")
 filter_mode = st.radio(
@@ -98,21 +275,20 @@ send_mode = st.radio(
 )
 
 st.subheader("Compose Message")
-topic = st.text_input("Campaign Topic", value="New arrivals in textile machinery parts")
 default_subject = st.session_state.get(
     "promo_subject",
-    "Exclusive Update from Shree Tex Fabb",
+    "Exclusive Update from Satyam Tex Fabb",
 )
 default_body = st.session_state.get(
     "promo_body",
     (
         "Dear [Customer Name],\n\n"
-        "Greetings from Shree Tex Fabb!\n\n"
+        "Greetings from Satyam Tex Fabb!\n\n"
         "[Custom message here]\n\n"
         "We value your continued association with us and look forward to serving your machinery parts requirements.\n\n"
         "For orders or enquiries, please contact us anytime.\n\n"
         "Warm regards,\n"
-        "Shree Tex Fabb\n"
+        "Satyam Tex Fabb\n"
         "Bhilwara, Rajasthan"
     ),
 )
@@ -122,62 +298,6 @@ body = st.text_area(
     value=default_body,
     height=260,
 )
-
-gen_col1, gen_col2 = st.columns(2)
-with gen_col1:
-    if st.button("Generate Email Body"):
-        if not topic.strip():
-            st.error("Please enter a topic to generate email body.")
-        else:
-            try:
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=f"""Write a professional promotional email for a textile machinery parts business called Shree Tex Fabb based in Bhilwara, Rajasthan.
-
-Topic: {topic}
-
-Requirements:
-- Professional and warm tone
-- Mention Shree Tex Fabb by name
-- Relevant to textile machinery parts industry
-- Include a clear call to action
-- End with professional signature for Shree Tex Fabb, Bhilwara
-- Return ONLY the email body text, no subject line, no extra commentary
-- Keep it concise, under 200 words"""
-                )
-                email_body = (response.text or "").strip()
-                if not email_body:
-                    st.error("Gemini did not return email body text.")
-                else:
-                    st.session_state["promo_body"] = email_body
-                    st.rerun()
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-            except Exception as exc:
-                st.error(f"Error generating email body: {exc}")
-
-with gen_col2:
-    if st.button("Generate Subject Line"):
-        if not topic.strip():
-            st.error("Please enter a topic to generate subject line.")
-        else:
-            try:
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-                subject_response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=f"Write only a short professional email subject line (max 8 words) for a promotional email about: {topic} for a textile machinery parts business. Return ONLY the subject line, nothing else.",
-                )
-                email_subject = (subject_response.text or "").strip()
-                if not email_subject:
-                    st.error("Gemini did not return subject line text.")
-                else:
-                    st.session_state["promo_subject"] = email_subject
-                    st.rerun()
-            except KeyError:
-                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
-            except Exception as exc:
-                st.error(f"Error generating subject line: {exc}")
 
 st.subheader("Preview")
 preview_name = "Customer"

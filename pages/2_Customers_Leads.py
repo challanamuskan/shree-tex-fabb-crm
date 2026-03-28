@@ -3,6 +3,9 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_login, is_admin
+require_login()
+
 from utils.constants import CONTACTS_HEADERS, CONTACTS_TAB
 from utils.sheets_db import (
     append_record,
@@ -12,8 +15,6 @@ from utils.sheets_db import (
     update_record,
 )
 from utils.ui import (
-    admin_login_widget,
-    check_admin_access,
     get_spreadsheet_connection,
     init_page,
 )
@@ -30,7 +31,6 @@ def parse_date(value):
 
 init_page("Customers & Leads")
 st.title("Customers & Leads")
-admin_login_widget()
 
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
@@ -87,7 +87,7 @@ with st.form("add_contact_form", clear_on_submit=True):
 st.markdown("---")
 st.subheader("Edit / Delete Contact")
 if records:
-    if check_admin_access():
+    if is_admin():
         option_map = {f"{r['Name']} | {r['Business Name']}": r for r in records}
         selected_key = st.selectbox("Select contact", list(option_map.keys()))
         selected = option_map[selected_key]
