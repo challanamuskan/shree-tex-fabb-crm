@@ -12,6 +12,31 @@ ADMIN_ROLE = "admin"
 EMPLOYEE_ROLE = "employee"
 
 
+def get_credentials():
+    import streamlit as st
+    from oauth2client.service_account import ServiceAccountCredentials
+    import json, tempfile, os
+    from pathlib import Path
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+    # Try Streamlit secrets first (cloud deployment)
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds_dict["type"] = "service_account"
+            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            json.dump(creds_dict, tmp)
+            tmp.flush()
+            return ServiceAccountCredentials.from_json_keyfile_name(tmp.name, scope)
+    except Exception:
+        pass
+
+    # Fall back to local file
+    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
+    return ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
+
+
 def hash_password(password: str) -> str:
     """Hash a password using SHA256."""
     return hashlib.sha256(password.encode()).hexdigest()
@@ -28,12 +53,7 @@ def load_sheet_id():
 
 def get_users_sheet():
     """Get or create the Users sheet in Google Sheets."""
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
-    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
+    creds = get_credentials()
     client = gspread.authorize(creds)
     sheet_id = load_sheet_id()
     if not sheet_id:

@@ -8,6 +8,31 @@ from oauth2client.service_account import ServiceAccountCredentials
 CONFIG_FILE = Path(__file__).resolve().parent.parent / ".streamlit" / "crm_config.json"
 
 
+def get_credentials():
+    import streamlit as st
+    from oauth2client.service_account import ServiceAccountCredentials
+    import json, tempfile, os
+    from pathlib import Path
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+    # Try Streamlit secrets first (cloud deployment)
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds_dict["type"] = "service_account"
+            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            json.dump(creds_dict, tmp)
+            tmp.flush()
+            return ServiceAccountCredentials.from_json_keyfile_name(tmp.name, scope)
+    except Exception:
+        pass
+
+    # Fall back to local file
+    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
+    return ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
+
+
 def save_sheet_id(sheet_id: str):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
@@ -15,9 +40,16 @@ def save_sheet_id(sheet_id: str):
 
 
 def load_sheet_id() -> str:
-    if CONFIG_FILE.exists():
+    try:
+        if "SHEET_ID" in st.secrets:
+            return st.secrets["SHEET_ID"]
+    except:
+        pass
+    # Fall back to local config
+    config_path = Path(__file__).resolve().parent.parent / ".streamlit" / "crm_config.json"
+    if config_path.exists():
         try:
-            with open(CONFIG_FILE) as f:
+            with open(config_path) as f:
                 return json.load(f).get("sheet_id", "")
         except Exception:
             return ""
@@ -78,9 +110,7 @@ def get_spreadsheet_connection():
         if st.button("Connect") or saved_id:
             if sheet_id:
                 try:
-                    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-                    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
-                    creds = ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
+                    creds = get_credentials()
                     client = gspread.authorize(creds)
                     spreadsheet = client.open_by_key(sheet_id)
                     save_sheet_id(sheet_id)
