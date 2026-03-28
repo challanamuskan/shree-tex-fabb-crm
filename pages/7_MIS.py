@@ -3,6 +3,9 @@ from datetime import date, datetime, timedelta
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_login, is_admin
+require_login()
+
 from utils.constants import (
     ATTENDANCE_HEADERS,
     ATTENDANCE_TAB,
@@ -14,7 +17,7 @@ from utils.constants import (
     EMPLOYEE_TASKS_TAB,
 )
 from utils.sheets_db import append_record, get_or_create_worksheet, read_records, update_record
-from utils.ui import admin_login_widget, check_admin_access, get_spreadsheet_connection, init_page
+from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import send_whatsapp_message
 
 
@@ -76,7 +79,6 @@ def get_attendance_status(hours_str):
 
 init_page("MIS System")
 st.title("Management Information System")
-admin_login_widget()
 
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
@@ -208,18 +210,16 @@ if section == "Employee Report Form":
                 st.error(f"Error submitting report: {exc}")
 
 elif section == "Admin Panel":
-    st.subheader("Admin Panel - Password Required")
+    from utils.auth import require_admin
+    require_admin()
+    st.subheader("Admin Panel")
 
-    password_input = st.text_input("Enter Password", type="password")
-    if password_input != "National1975":
-        st.warning("Please enter the correct password to access the Admin Panel.")
-        st.stop()
 
     admin_tab_1, admin_tab_2, admin_tab_3 = st.tabs(["Manage Employees", "Assign Tasks", "Attendance Management"])
 
     with admin_tab_1:
         st.markdown("### Add New Employee")
-        if check_admin_access():
+        if True:
             with st.form("add_employee_form", clear_on_submit=True):
                 emp_name = st.text_input("Employee Name")
                 emp_role = st.selectbox("Role", ["Warehouse", "Dispatch", "Admin"])

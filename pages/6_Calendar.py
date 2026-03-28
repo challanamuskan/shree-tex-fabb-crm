@@ -4,6 +4,9 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_login, is_admin
+require_login()
+
 from utils.constants import (
     CONTACTS_HEADERS,
     CONTACTS_TAB,

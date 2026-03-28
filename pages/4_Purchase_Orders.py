@@ -3,6 +3,9 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_login, is_admin
+require_login()
+
 from utils.constants import PURCHASE_ORDERS_HEADERS, PURCHASE_ORDERS_TAB
 from utils.sheets_db import (
     append_record,
@@ -12,8 +15,6 @@ from utils.sheets_db import (
     update_record,
 )
 from utils.ui import (
-    admin_login_widget,
-    check_admin_access,
     get_spreadsheet_connection,
     init_page,
 )
@@ -44,7 +45,6 @@ def parse_date(value):
 
 init_page("Purchase Orders")
 st.title("Purchase Orders")
-admin_login_widget()
 
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
@@ -166,7 +166,7 @@ if st.button("Create Order"):
 st.markdown("---")
 st.subheader("Edit / Delete Purchase Order")
 if records:
-    if check_admin_access():
+    if is_admin():
         option_map = {
             f"{r.get('Supplier', '').strip()} | {r.get('Invoice Number', '').strip() or 'No Invoice'} | {r.get('Part Name', '').strip()}": r
             for r in records
