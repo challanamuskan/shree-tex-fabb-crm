@@ -23,6 +23,7 @@ from utils.sheets_db import (
     read_records,
     update_record,
 )
+from utils.file_handler import upload_widget, display_document
 from utils.ui import (
     get_spreadsheet_connection,
     init_page,
@@ -74,7 +75,7 @@ def part_option_label(row):
 
 st.subheader("Current Stock")
 if records:
-    display_df = pd.DataFrame(records).drop(columns=["_row"])
+    display_df = pd.DataFrame(records).drop(columns=["_row", "Product_Image"], errors="ignore")
 
     def highlight_low_stock(row):
         if to_int(row["Quantity"]) < to_int(row["Reorder Level"]):
@@ -89,6 +90,15 @@ if records:
     low_stock_count = sum(1 for row in records if is_low_stock(row))
     if low_stock_count:
         st.warning(f"Low stock alert: {low_stock_count} part(s) are below reorder level.")
+
+    parts_with_images = [row for row in records if str(row.get("Product_Image", "")).strip()]
+    if parts_with_images:
+        st.markdown("#### Product Images")
+        for row in parts_with_images:
+            part_number = row.get("Part Number", "").strip()
+            part_name = row.get("Part Name", "").strip() or "Unnamed Part"
+            label = f"{part_number} | {part_name}" if part_number else part_name
+            display_document(row.get("Product_Image", ""), label=f"View Image - {label}")
 else:
     st.info("No stock records found.")
 
@@ -113,6 +123,12 @@ if records:
                 format="%.2f",
             )
 
+        sale_bill_b64 = upload_widget(
+            "Sale Bill / Invoice",
+            "sale_bill",
+            ["jpg", "jpeg", "png", "pdf"],
+        )
+
         record_sale_submit = st.form_submit_button("Record Sale")
         if record_sale_submit:
             selected_part = part_options[selected_part_key]
@@ -134,6 +150,7 @@ if records:
                     "Party Name": party_name.strip(),
                     "Sale Price Per Unit": f"{float(sale_price_per_unit):.2f}",
                     "Total Sale Value": f"{float(sale_price_per_unit) * sold_qty:.2f}",
+                    "Sale_Bill": sale_bill_b64,
                 }
 
                 new_qty = available_qty - sold_qty
@@ -146,6 +163,7 @@ if records:
                     "Unit Price": f"{to_float(selected_part.get('Unit Price', '0')):.2f}",
                     "Supplier Name": selected_part.get("Supplier Name", "").strip(),
                     "Purchase Date": selected_part.get("Purchase Date", "").strip(),
+                    "Product_Image": selected_part.get("Product_Image", ""),
                 }
 
                 try:
@@ -179,6 +197,12 @@ if records:
             )
             purchase_date = st.date_input("Purchase Date", value=date.today())
 
+        purchase_bill_b64 = upload_widget(
+            "Purchase Bill / Invoice",
+            "purchase_bill",
+            ["jpg", "jpeg", "png", "pdf"],
+        )
+
         record_purchase_submit = st.form_submit_button("Record Purchase")
         if record_purchase_submit:
             selected_part = purchase_part_options[purchase_part_key]
@@ -197,6 +221,7 @@ if records:
                     "Supplier Name": purchase_supplier_name.strip(),
                     "Purchase Price Per Unit": f"{float(purchase_price_per_unit):.2f}",
                     "Total Purchase Value": f"{total_purchase_value:.2f}",
+                    "Purchase_Bill": purchase_bill_b64,
                 }
 
                 updated_stock_payload = {
@@ -208,6 +233,7 @@ if records:
                     "Unit Price": f"{to_float(selected_part.get('Unit Price', '0')):.2f}",
                     "Supplier Name": selected_part.get("Supplier Name", "").strip(),
                     "Purchase Date": selected_part.get("Purchase Date", "").strip(),
+                    "Product_Image": selected_part.get("Product_Image", ""),
                 }
 
                 try:
@@ -239,6 +265,12 @@ if records:
                 sale_return_party_name = st.text_input("Party Name")
                 sale_return_reason = st.text_input("Reason for Return")
 
+            sale_return_doc_b64 = upload_widget(
+                "Return Document",
+                "sale_return_doc",
+                ["jpg", "jpeg", "png", "pdf"],
+            )
+
             record_sale_return_submit = st.form_submit_button("Record Sale Return")
             if record_sale_return_submit:
                 selected_part = return_part_options[sale_return_part_key]
@@ -253,6 +285,7 @@ if records:
                     "Invoice Number": original_sale_invoice_number.strip(),
                     "Party/Supplier Name": sale_return_party_name.strip(),
                     "Reason": sale_return_reason.strip(),
+                    "Return_Document": sale_return_doc_b64,
                 }
 
                 updated_stock_payload = {
@@ -264,6 +297,7 @@ if records:
                     "Unit Price": f"{to_float(selected_part.get('Unit Price', '0')):.2f}",
                     "Supplier Name": selected_part.get("Supplier Name", "").strip(),
                     "Purchase Date": selected_part.get("Purchase Date", "").strip(),
+                    "Product_Image": selected_part.get("Product_Image", ""),
                 }
 
                 try:
@@ -300,6 +334,12 @@ if records:
                 purchase_return_supplier_name = st.text_input("Supplier Name")
                 purchase_return_reason = st.text_input("Reason for Return")
 
+            purchase_return_doc_b64 = upload_widget(
+                "Return Document",
+                "purchase_return_doc",
+                ["jpg", "jpeg", "png", "pdf"],
+            )
+
             record_purchase_return_submit = st.form_submit_button("Record Purchase Return")
             if record_purchase_return_submit:
                 selected_part = return_part_options[purchase_return_part_key]
@@ -319,6 +359,7 @@ if records:
                         "Invoice Number": original_purchase_invoice_number.strip(),
                         "Party/Supplier Name": purchase_return_supplier_name.strip(),
                         "Reason": purchase_return_reason.strip(),
+                        "Return_Document": purchase_return_doc_b64,
                     }
 
                     updated_stock_payload = {
@@ -330,6 +371,7 @@ if records:
                         "Unit Price": f"{to_float(selected_part.get('Unit Price', '0')):.2f}",
                         "Supplier Name": selected_part.get("Supplier Name", "").strip(),
                         "Purchase Date": selected_part.get("Purchase Date", "").strip(),
+                        "Product_Image": selected_part.get("Product_Image", ""),
                     }
 
                     try:
@@ -451,6 +493,12 @@ with st.form("add_part_form", clear_on_submit=True):
         supplier_name = st.text_input("Supplier Name")
         purchase_date = st.date_input("Purchase Date", value=date.today())
 
+    product_image_b64 = upload_widget(
+        "Product Image",
+        "stock_image",
+        ["jpg", "jpeg", "png"],
+    )
+
     add_submit = st.form_submit_button("Add Part")
     if add_submit:
         if not part_name.strip():
@@ -465,6 +513,7 @@ with st.form("add_part_form", clear_on_submit=True):
                 "Unit Price": f"{float(unit_price):.2f}",
                 "Supplier Name": supplier_name.strip(),
                 "Purchase Date": purchase_date.isoformat(),
+                "Product_Image": product_image_b64,
             }
             try:
                 append_record(worksheet, PARTS_HEADERS, payload)
@@ -535,6 +584,7 @@ if records:
                         "Unit Price": f"{float(e_unit_price):.2f}",
                         "Supplier Name": e_supplier_name.strip(),
                         "Purchase Date": e_purchase_date.isoformat(),
+                        "Product_Image": selected.get("Product_Image", ""),
                     }
                     try:
                         update_record(worksheet, selected["_row"], PARTS_HEADERS, payload)

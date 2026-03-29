@@ -20,6 +20,7 @@ PARTS_HEADERS = [
     "Unit Price",
     "Supplier Name",
     "Purchase Date",
+    "Product_Image",
 ]
 
 SALES_RECORDS_HEADERS = [
@@ -30,6 +31,7 @@ SALES_RECORDS_HEADERS = [
     "Party Name",
     "Sale Price Per Unit",
     "Total Sale Value",
+    "Sale_Bill",
 ]
 
 PURCHASE_RECORDS_HEADERS = [
@@ -40,6 +42,7 @@ PURCHASE_RECORDS_HEADERS = [
     "Supplier Name",
     "Purchase Price Per Unit",
     "Total Purchase Value",
+    "Purchase_Bill",
 ]
 
 RETURNS_HEADERS = [
@@ -50,6 +53,7 @@ RETURNS_HEADERS = [
     "Invoice Number",
     "Party/Supplier Name",
     "Reason",
+    "Return_Document",
 ]
 
 CONTACTS_HEADERS = [
