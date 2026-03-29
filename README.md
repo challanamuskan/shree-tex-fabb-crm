@@ -20,6 +20,7 @@ Satyam Tex Fabb CRM is a comprehensive Customer Relationship Management system d
 - **📊 MIS System** — Employee attendance tracking and comprehensive daily reports
 - **🤖 AI-Powered Email Composer** — Generate professional promotional emails with AI assistance
 - **🗂️ Google Sheets Integration** — Live database syncing for seamless multi-user access
+- **📎 Document Scanner** — Upload or photograph bills, invoices and product images directly from mobile camera or file browser. All documents stored securely in Google Sheets.
 
 ## 🛠️ Tech Stack
 
@@ -29,6 +30,7 @@ Satyam Tex Fabb CRM is a comprehensive Customer Relationship Management system d
 | **Backend** | Python 3.9+ |
 | **Database** | Google Sheets + gspread |
 | **Notifications** | Gmail API, PyWhatKit (WhatsApp) |
+| **Imaging** | Pillow |
 | **Authentication** | Google Service Account |
 | **Deployment** | Streamlit Cloud |
 
