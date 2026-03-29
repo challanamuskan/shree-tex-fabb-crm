@@ -14,6 +14,7 @@ from utils.sheets_db import (
     read_records,
     update_record,
 )
+from utils.file_handler import upload_and_scan_widget
 from utils.ui import (
     get_spreadsheet_connection,
     init_page,
@@ -43,6 +44,29 @@ def parse_date(value):
         return date.today()
 
 
+def parse_scanned_date(value):
+    value_str = str(value).strip()
+    if not value_str:
+        return date.today()
+
+    date_formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%y",
+        "%d/%m/%y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%d %b %y",
+    ]
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(value_str, fmt).date()
+        except ValueError:
+            continue
+    return date.today()
+
+
 init_page("Purchase Orders")
 st.title("Purchase Orders")
 
@@ -55,7 +79,7 @@ records = read_records(worksheet, PURCHASE_ORDERS_HEADERS)
 
 st.subheader("Orders")
 if records:
-    df = pd.DataFrame(records).drop(columns=["_row"])
+    df = pd.DataFrame(records).drop(columns=["_row", "Invoice_Document"], errors="ignore")
     display_cols = [
         c
         for c in [
@@ -81,12 +105,16 @@ st.subheader("Create Purchase Order")
 if "po_product_count" not in st.session_state:
     st.session_state["po_product_count"] = 1
 
+bill_b64, scan_data = upload_and_scan_widget("Supplier Invoice", "po_invoice")
+scanned_order_date = parse_scanned_date(scan_data.get("date", ""))
+scanned_qty = max(1, to_int(scan_data.get("quantity", "1")))
+
 header_c1, header_c2 = st.columns(2)
 with header_c1:
-    supplier = st.text_input("Supplier Name", key="po_supplier")
-    invoice_number = st.text_input("Invoice Number", key="po_invoice")
+    supplier = st.text_input("Supplier Name", value=scan_data.get("party_name", ""), key="po_supplier")
+    invoice_number = st.text_input("Invoice Number", value=scan_data.get("invoice_number", ""), key="po_invoice_number")
 with header_c2:
-    order_date = st.date_input("Order Date", value=date.today(), key="po_order_date")
+    order_date = st.date_input("Order Date", value=scanned_order_date, key="po_order_date")
     expected_delivery = st.date_input(
         "Expected Delivery",
         value=date.today(),
@@ -105,7 +133,7 @@ for idx in range(st.session_state["po_product_count"]):
     with p1:
         p_name = st.text_input("Part Name", key=f"po_part_name_{idx}")
     with p2:
-        p_qty = st.number_input("Quantity", min_value=1, step=1, value=1, key=f"po_qty_{idx}")
+        p_qty = st.number_input("Quantity", min_value=1, step=1, value=scanned_qty, key=f"po_qty_{idx}")
     with p3:
         p_unit_price = st.number_input(
             "Unit Price",
@@ -155,6 +183,7 @@ if st.button("Create Order"):
                     "Order Date": order_date.isoformat(),
                     "Expected Delivery": expected_delivery.isoformat(),
                     "Status": status,
+                    "Invoice_Document": bill_b64,
                 }
                 append_record(worksheet, PURCHASE_ORDERS_HEADERS, payload)
             st.success("Purchase order created successfully.")
@@ -219,6 +248,7 @@ if records:
                         "Order Date": e_order_date.isoformat(),
                         "Expected Delivery": e_expected_delivery.isoformat(),
                         "Status": e_status,
+                        "Invoice_Document": selected.get("Invoice_Document", ""),
                     }
                     try:
                         update_record(worksheet, selected["_row"], PURCHASE_ORDERS_HEADERS, payload)

@@ -73,6 +73,7 @@ PAYMENTS_HEADERS = [
     "Amount",
     "Due Date",
     "Status",
+    "Receipt_Document",
 ]
 
 PURCHASE_ORDERS_HEADERS = [
@@ -86,6 +87,7 @@ PURCHASE_ORDERS_HEADERS = [
     "Order Date",
     "Expected Delivery",
     "Status",
+    "Invoice_Document",
 ]
 
 EMAIL_LOG_HEADERS = [

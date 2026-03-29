@@ -14,6 +14,7 @@ from utils.sheets_db import (
     read_records,
     update_record,
 )
+from utils.file_handler import upload_and_scan_widget
 from utils.ui import (
     get_spreadsheet_connection,
     init_page,
@@ -36,6 +37,29 @@ def parse_date(value):
         return date.today()
 
 
+def parse_scanned_date(value):
+    value_str = str(value).strip()
+    if not value_str:
+        return date.today()
+
+    date_formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%y",
+        "%d/%m/%y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%d %b %y",
+    ]
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(value_str, fmt).date()
+        except ValueError:
+            continue
+    return date.today()
+
+
 def is_overdue(record):
     due = parse_date(record.get("Due Date", ""))
     status = record.get("Status", "").strip().lower()
@@ -54,7 +78,7 @@ records = read_records(worksheet, PAYMENTS_HEADERS)
 
 st.subheader("Payment Dues")
 if records:
-    df = pd.DataFrame(records).drop(columns=["_row"])
+    df = pd.DataFrame(records).drop(columns=["_row", "Receipt_Document"], errors="ignore")
 
     def highlight_overdue(row):
         record = row.to_dict()
@@ -80,13 +104,17 @@ else:
 st.markdown("---")
 st.subheader("Add Payment")
 with st.form("add_payment_form", clear_on_submit=True):
+    bill_b64, scan_data = upload_and_scan_widget("Payment Receipt", "payment_receipt")
+    scanned_amount = to_float(scan_data.get("amount", ""))
+    scanned_due_date = parse_scanned_date(scan_data.get("date", ""))
+
     c1, c2 = st.columns(2)
     with c1:
-        customer_name = st.text_input("Customer Name")
-        invoice_number = st.text_input("Invoice Number")
-        amount = st.number_input("Amount", min_value=0.0, step=0.01, format="%.2f")
+        customer_name = st.text_input("Customer Name", value=scan_data.get("party_name", ""))
+        invoice_number = st.text_input("Invoice Number", value=scan_data.get("invoice_number", ""))
+        amount = st.number_input("Amount", min_value=0.0, step=0.01, format="%.2f", value=scanned_amount)
     with c2:
-        due_date = st.date_input("Due Date", value=date.today())
+        due_date = st.date_input("Due Date", value=scanned_due_date)
         status = st.selectbox("Status", STATUS_OPTIONS, index=1)
 
     add_submit = st.form_submit_button("Add Payment")
@@ -104,6 +132,7 @@ with st.form("add_payment_form", clear_on_submit=True):
                 "Amount": f"{float(amount):.2f}",
                 "Due Date": due_date.isoformat(),
                 "Status": effective_status,
+                "Receipt_Document": bill_b64,
             }
             try:
                 append_record(worksheet, PAYMENTS_HEADERS, payload)
@@ -155,6 +184,7 @@ if records:
                         "Amount": f"{float(e_amount):.2f}",
                         "Due Date": e_due_date.isoformat(),
                         "Status": effective_status,
+                        "Receipt_Document": selected.get("Receipt_Document", ""),
                     }
                     try:
                         update_record(worksheet, selected["_row"], PAYMENTS_HEADERS, payload)
