@@ -20,7 +20,7 @@ Satyam Tex Fabb CRM is a comprehensive Customer Relationship Management system d
 - **📊 MIS System** — Employee attendance tracking and comprehensive daily reports
 - **🤖 AI-Powered Email Composer** — Generate professional promotional emails with AI assistance
 - **🗂️ Google Sheets Integration** — Live database syncing for seamless multi-user access
-- **📎 Document Scanner** — Upload or photograph bills, invoices and product images directly from mobile camera or file browser. All documents stored securely in Google Sheets.
+- **📎 Smart Document Scanner** — Upload or photograph bills and invoices from mobile camera or file browser. OCR automatically extracts amount, date, invoice number and party name to auto-fill form fields. Falls back to manual entry if scan is unclear.
 
 ## 🛠️ Tech Stack
 
