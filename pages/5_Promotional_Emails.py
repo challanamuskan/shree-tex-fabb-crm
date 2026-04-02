@@ -15,7 +15,7 @@ from utils.constants import (
 from utils.gmail_sender import get_gmail_service, send_email
 from utils.sheets_db import append_record, get_or_create_worksheet, read_records
 from utils.ui import get_spreadsheet_connection, init_page
-from utils.whatsapp_sender import send_whatsapp_message
+from utils.whatsapp_sender import generate_whatsapp_link
 
 EMAIL_TYPE = "Promotional"
 OPEN_LEAD_STATUSES = {"new", "contacted", "interested", "negotiation"}
@@ -373,13 +373,9 @@ if st.button("Send to All Selected", type="primary"):
             if not recipient_phone:
                 whatsapp_status = "No Phone"
             else:
-                success, msg = send_whatsapp_message(recipient_phone, personalized_body, wait_time=30)
-                if success:
-                    st.success(f"WhatsApp sent to {recipient_name} ({recipient_phone})")
-                    whatsapp_status = "Sent"
-                else:
-                    st.error(msg)
-                    whatsapp_status = "Failed"
+                whatsapp_link = generate_whatsapp_link(recipient_phone, personalized_body)
+                st.link_button("📲 Send via WhatsApp", whatsapp_link)
+                whatsapp_status = "Link Ready"
 
         result_rows.append(
             {
