@@ -18,7 +18,7 @@ from utils.constants import (
 )
 from utils.sheets_db import append_record, get_or_create_worksheet, read_records, update_record
 from utils.ui import get_spreadsheet_connection, init_page
-from utils.whatsapp_sender import send_whatsapp_message
+from utils.whatsapp_sender import generate_whatsapp_link
 
 
 def to_float(value):
@@ -296,28 +296,25 @@ elif section == "Admin Panel":
                             "- Satyam Machinery Parts"
                         )
 
-                        success, msg = send_whatsapp_message(emp_whatsapp, message, wait_time=30)
-                        if success:
-                            st.success(msg)
-                            try:
-                                append_record(
-                                    tasks_ws,
-                                    EMPLOYEE_TASKS_HEADERS,
-                                    {
-                                        "Date": task_date.isoformat(),
-                                        "Employee Name": selected_emp,
-                                        "Task": task_description.strip(),
-                                        "Target": task_target.strip(),
-                                        "Status": "Assigned",
-                                        "Report Submitted": "No",
-                                    },
-                                )
-                                st.success("Task saved to database!")
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Error saving task: {exc}")
-                        else:
-                            st.error(msg)
+                        whatsapp_link = generate_whatsapp_link(emp_whatsapp, message)
+                        st.link_button("📲 Send via WhatsApp", whatsapp_link)
+                        try:
+                            append_record(
+                                tasks_ws,
+                                EMPLOYEE_TASKS_HEADERS,
+                                {
+                                    "Date": task_date.isoformat(),
+                                    "Employee Name": selected_emp,
+                                    "Task": task_description.strip(),
+                                    "Target": task_target.strip(),
+                                    "Status": "Assigned",
+                                    "Report Submitted": "No",
+                                },
+                            )
+                            st.success("Task saved to database. Open the WhatsApp link to send it.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Error saving task: {exc}")
 
         st.markdown("### Today's Task Assignments")
         today_tasks = [t for t in tasks if parse_date(t.get("Date", "")) == date.today()]

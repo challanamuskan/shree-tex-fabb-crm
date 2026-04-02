@@ -10,8 +10,17 @@ import streamlit as st
 
 def image_to_base64(image_file) -> str:
     """Convert uploaded file to base64 string."""
-    bytes_data = image_file.getvalue()
-    return base64.b64encode(bytes_data).decode()
+    if hasattr(image_file, "seek"):
+        image_file.seek(0)
+
+    with Image.open(image_file) as img:
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.thumbnail((400, 400))
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=60)
+        return base64.b64encode(buffer.getvalue()).decode()
 
 
 def base64_to_image(b64_string: str):

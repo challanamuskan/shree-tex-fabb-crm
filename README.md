@@ -29,7 +29,7 @@ Satyam Tex Fabb CRM is a comprehensive Customer Relationship Management system d
 | **Frontend** | Streamlit |
 | **Backend** | Python 3.9+ |
 | **Database** | Google Sheets + gspread |
-| **Notifications** | Gmail API, PyWhatKit (WhatsApp) |
+| **Notifications** | Gmail API, WhatsApp click-to-chat links |
 | **Imaging** | Pillow |
 | **Authentication** | Google Service Account |
 | **Deployment** | Streamlit Cloud |
@@ -70,7 +70,7 @@ Screenshots coming soon
 
 4. **Configure credentials**
    - Place your Google Service Account JSON file as `textile-part-crm-credentials.json`
-   - Set up Gmail and WhatsApp API credentials as needed
+   - Set up Gmail credentials as needed
 
 5. **Run the application**
    ```bash
