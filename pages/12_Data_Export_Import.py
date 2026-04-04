@@ -243,64 +243,86 @@ else:
     upload = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"], key="import_file")
 
     target_sheet_options = {
+        "Restore Full Backup (All Sheets)": None,
         "Parts": (PARTS_TAB, PARTS_HEADERS),
         "Customers": (CONTACTS_TAB, CONTACTS_HEADERS),
         "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
         "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
         "Sales_Records": (SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
     }
-    target_name = st.selectbox("Import into", options=list(target_sheet_options.keys()))
+    target_name = st.selectbox("Import into", options=list(target_sheet_options.keys()), index=0)
 
     if upload is not None:
-        if upload.name.lower().endswith(".csv"):
-            input_df = pd.read_csv(upload)
-        else:
-            input_df = pd.read_excel(upload)
-
-        st.markdown("Preview (first 5 rows)")
-        st.dataframe(input_df.head(5), use_container_width=True, hide_index=True)
-
-        target_tab, target_headers = target_sheet_options[target_name]
-        source_cols = ["-- Skip --"] + list(input_df.columns)
-
-        st.markdown("Column Mapping")
-        mapping = {}
-        for header in target_headers:
-            default_idx = source_cols.index(header) if header in source_cols else 0
-            mapping[header] = st.selectbox(
-                f"{header} <-",
-                options=source_cols,
-                index=default_idx,
-                key=f"map_{target_name}_{header}",
-            )
-
         if st.button("Import Data"):
-            target_ws = get_or_create_worksheet(spreadsheet, target_tab, target_headers)
-
-            # Build a mapped dataframe that matches target headers exactly.
-            mapped_df = pd.DataFrame()
-            for header in target_headers:
-                src = mapping[header]
-                if src == "-- Skip --":
-                    mapped_df[header] = ""
+            if target_name == "Restore Full Backup (All Sheets)":
+                if not upload.name.lower().endswith(".xlsx"):
+                    st.error("Please upload an Excel backup file (.xlsx) for full restore.")
                 else:
-                    mapped_df[header] = input_df[src]
+                    all_sheets = pd.read_excel(upload, sheet_name=None)
+                    restore_mapping = {
+                        "Categories": (CATEGORIES_TAB, CATEGORIES_HEADERS),
+                        "Parts": (PARTS_TAB, PARTS_HEADERS),
+                        "Sales_Records": (SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
+                        "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
+                        "Returns": (RETURNS_TAB, RETURNS_HEADERS),
+                        "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
+                    }
+                    restored_sheets = 0
+                    restore_spreadsheet = get_spreadsheet_connection()
 
-            # Ensure df columns match target_headers exactly
-            ordered_df = mapped_df[target_headers]
-            # Convert all NaN/NaT to empty strings so Google Sheets accepts it
-            ordered_df = ordered_df.fillna("")
-            # Convert dataframe to a list of lists
-            list_of_rows = ordered_df.values.tolist()
+                    with st.spinner("Bulk restoring backup to Google Sheets..."):
+                        for sheet_name, sheet_df in all_sheets.items():
+                            if sheet_name not in restore_mapping:
+                                continue
 
-            # Send everything in ONE single API call
-            with st.spinner("Bulk uploading data to Google Sheets..."):
-                success = bulk_append_records(target_ws, list_of_rows)
+                            target_tab, target_headers = restore_mapping[sheet_name]
+                            target_ws = get_or_create_worksheet(restore_spreadsheet, target_tab, target_headers)
 
-            if success:
-                st.success(f"✅ Successfully imported {len(list_of_rows)} records in bulk!")
-                # Clear cache so the new data shows up across the app
-                st.cache_data.clear()
+                            working_df = sheet_df.copy()
+                            for header in target_headers:
+                                if header not in working_df.columns:
+                                    working_df[header] = ""
+                            ordered_df = working_df[target_headers]
+                            ordered_df = ordered_df.fillna("")
+                            ordered_df = ordered_df.astype(str)  # THIS FIXES THE JSON CRASH
+                            list_of_rows = ordered_df.values.tolist()
+
+                            if not list_of_rows:
+                                continue
+
+                            success = bulk_append_records(target_ws, list_of_rows)
+                            if success:
+                                restored_sheets += 1
+
+                    if restored_sheets > 0:
+                        st.success(f"✅ Successfully restored data across {restored_sheets} sheets!")
+                        st.cache_data.clear()
+                    else:
+                        st.warning("No matching backup sheets were found to restore.")
+            else:
+                target_tab, target_headers = target_sheet_options[target_name]
+                if upload.name.lower().endswith(".csv"):
+                    input_df = pd.read_csv(upload)
+                else:
+                    input_df = pd.read_excel(upload)
+
+                working_df = input_df.copy()
+                for header in target_headers:
+                    if header not in working_df.columns:
+                        working_df[header] = ""
+
+                ordered_df = working_df[target_headers]
+                ordered_df = ordered_df.fillna("")
+                ordered_df = ordered_df.astype(str)  # THIS FIXES THE JSON CRASH
+                list_of_rows = ordered_df.values.tolist()
+                target_ws = get_or_create_worksheet(spreadsheet, target_tab, target_headers)
+
+                with st.spinner("Bulk uploading data to Google Sheets..."):
+                    success = bulk_append_records(target_ws, list_of_rows)
+
+                if success:
+                    st.success(f"✅ Successfully imported {len(list_of_rows)} records in bulk!")
+                    st.cache_data.clear()
 
 st.markdown("---")
 st.subheader("Section C - Tally Export Guide")
