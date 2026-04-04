@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.auth import require_login
-from utils.constants import PARTS_HEADERS, PARTS_TAB, SALES_RECORDS_HEADERS, SALES_RECORDS_TAB
+from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, SALES_RECORDS_HEADERS, SALES_RECORDS_TAB
 from utils.sheets_db import append_record, get_or_create_worksheet, read_records, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
@@ -47,25 +47,31 @@ if not spreadsheet:
     st.stop()
 
 parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
 
 parts = read_records(parts_ws, PARTS_HEADERS)
+categories = read_records(categories_ws, CATEGORIES_HEADERS)
 sales = read_records(sales_ws, SALES_RECORDS_HEADERS)
-
-part_names = sorted({p.get("Part_Name", "").strip() for p in parts if p.get("Part_Name", "").strip()})
+category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
+if not category_names:
+    category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
 
 st.subheader("Section A - Record New Sale")
-if not part_names:
+if not parts:
     st.info("No parts found in stock.")
 else:
     with st.form("record_sale_form", clear_on_submit=True):
-        selected_part = st.selectbox(
-            "Select Part",
-            options=part_names,
-            format_func=lambda n: f"{next((p.get('Category', '') for p in parts if p.get('Part_Name', '').strip() == n), '')} > {n}",
-        )
+        selected_category = st.selectbox("Select Category", options=category_names, key="sale_category")
+        category_rows = [p for p in parts if (p.get("Category", "").strip() or "Uncategorised") == selected_category]
+        part_names = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
+        if not part_names:
+            st.info("No parts found in the selected category.")
+            st.stop()
 
-        matching_rows = [p for p in parts if p.get("Part_Name", "").strip() == selected_part]
+        selected_part = st.selectbox("Select Part", options=part_names, key="sale_part")
+
+        matching_rows = [p for p in category_rows if p.get("Part_Name", "").strip() == selected_part]
         total_stock = sum(to_int(r.get("Quantity", "0")) for r in matching_rows)
         st.caption(f"Available stock: {total_stock}")
 
@@ -134,7 +140,7 @@ else:
                         {
                             "Date": sale_date.isoformat(),
                             "Part_Name": selected_part,
-                            "Category": matching_rows[0].get("Category", "").strip() if matching_rows else "",
+                            "Category": selected_category,
                             "Supplier": supplier_choice,
                             "Quantity_Sold": str(int(qty_sold)),
                             "Sale_Invoice_Number": sale_invoice.strip(),
@@ -164,11 +170,18 @@ else:
     with c2:
         end_date = st.date_input("End Date", value=max_date, key="sales_end")
 
-    part_filter = st.selectbox("Part Name", options=["All"] + sorted(df["Part_Name"].dropna().astype(str).unique().tolist()))
+    filter_categories = sorted(df["Category"].dropna().astype(str).replace("", "Uncategorised").unique().tolist())
+    part_filter_category = st.selectbox("Category", options=["All"] + filter_categories)
+    filtered_parts = df.copy()
+    if part_filter_category != "All":
+        filtered_parts = filtered_parts[filtered_parts["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
+    part_filter = st.selectbox("Part Name", options=["All"] + sorted(filtered_parts["Part_Name"].dropna().astype(str).unique().tolist()))
     party_filter = st.text_input("Party Name contains")
 
     filtered = df.copy()
     filtered = filtered[(filtered["Date"].dt.date >= start_date) & (filtered["Date"].dt.date <= end_date)]
+    if part_filter_category != "All":
+        filtered = filtered[filtered["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
     if part_filter != "All":
         filtered = filtered[filtered["Part_Name"].astype(str) == part_filter]
     if party_filter.strip():

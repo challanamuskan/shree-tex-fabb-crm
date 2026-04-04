@@ -5,6 +5,8 @@ import streamlit as st
 
 from utils.auth import is_admin, require_login
 from utils.constants import (
+    CATEGORIES_HEADERS,
+    CATEGORIES_TAB,
     CONTACTS_HEADERS,
     CONTACTS_TAB,
     PARTS_HEADERS,
@@ -84,11 +86,20 @@ if not spreadsheet:
 
 worksheet = get_or_create_worksheet(spreadsheet, PURCHASE_ORDERS_TAB, PURCHASE_ORDERS_HEADERS)
 parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
 
 records = read_records(worksheet, PURCHASE_ORDERS_HEADERS)
 parts_records = read_records(parts_ws, PARTS_HEADERS)
+categories_records = read_records(categories_ws, CATEGORIES_HEADERS)
 contact_records = read_records(contacts_ws, CONTACTS_HEADERS)
+category_names = sorted({r.get("Category_Name", "").strip() for r in categories_records if r.get("Category_Name", "").strip()})
+if not category_names:
+    category_names = sorted({r.get("Category", "").strip() or "Uncategorised" for r in parts_records})
+
+if not parts_records:
+    st.info("No parts found. Add stock items first to create purchase orders.")
+    st.stop()
 
 st.subheader("Orders")
 if records:
@@ -119,17 +130,21 @@ if st.button("Add Another Product"):
 product_rows = []
 for idx in range(st.session_state["po_product_count"]):
     st.markdown(f"Product {idx + 1}")
-    p1, p2, p3 = st.columns([2, 1, 1])
+    p1, p2, p3 = st.columns([2, 2, 1])
     with p1:
-        p_name = st.text_input("Part Name", key=f"po_part_name_{idx}")
+        p_category = st.selectbox("Category", options=category_names, key=f"po_category_{idx}")
+    category_rows = [r for r in parts_records if (r.get("Category", "").strip() or "Uncategorised") == p_category]
+    category_part_names = sorted({r.get("Part_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip()})
     with p2:
-        p_qty = st.number_input("Quantity", min_value=1, step=1, value=1, key=f"po_qty_{idx}")
+        p_name = st.selectbox("Part Name", options=category_part_names if category_part_names else [""], key=f"po_part_name_{idx}")
     with p3:
-        p_unit_price = st.number_input("Unit Price", min_value=0.0, step=0.01, format="%.2f", key=f"po_unit_price_{idx}")
+        p_qty = st.number_input("Quantity", min_value=1, step=1, value=1, key=f"po_qty_{idx}")
+    p_unit_price = st.number_input("Unit Price", min_value=0.0, step=0.01, format="%.2f", key=f"po_unit_price_{idx}")
     line_total = int(p_qty) * float(p_unit_price)
     st.caption(f"Line Total: ₹{line_total:,.2f}")
     product_rows.append(
         {
+            "Category": p_category,
             "Part Name": p_name.strip(),
             "Quantity Ordered": int(p_qty),
             "Unit Price": f"{float(p_unit_price):.2f}",

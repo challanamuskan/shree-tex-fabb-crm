@@ -64,7 +64,7 @@ with st.sidebar:
     st.caption(f"Role: {st.session_state.get('user_role', 'unknown').capitalize()}")
     st.markdown("---")
     if st.button("🔑 Change Password", use_container_width=True):
-        st.switch_page("pages/9_Change_Password.py")
+        st.switch_page("pages/11_Change_Password.py")
     if st.button("🚪 Logout", use_container_width=True):
         logout()
         st.rerun()

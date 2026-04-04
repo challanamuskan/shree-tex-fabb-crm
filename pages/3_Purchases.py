@@ -7,6 +7,8 @@ import streamlit as st
 
 from utils.auth import require_login
 from utils.constants import (
+    CATEGORIES_HEADERS,
+    CATEGORIES_TAB,
     PARTS_HEADERS,
     PARTS_TAB,
     PRICE_HISTORY_HEADERS,
@@ -54,24 +56,45 @@ if not spreadsheet:
     st.stop()
 
 parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 price_history_ws = get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
 
 parts = read_records(parts_ws, PARTS_HEADERS)
+categories = read_records(categories_ws, CATEGORIES_HEADERS)
 purchases = read_records(purchase_ws, PURCHASE_RECORDS_HEADERS)
-
-part_names = sorted({p.get("Part_Name", "").strip() for p in parts if p.get("Part_Name", "").strip()})
+category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
+if not category_names:
+    category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
 
 st.subheader("Section A - Record New Purchase")
-selection = st.selectbox("Select Part", options=["New Part"] + part_names)
+if not parts:
+    st.info("No parts found in stock.")
+    st.stop()
 
-matching_rows = [p for p in parts if p.get("Part_Name", "").strip() == selection]
-default_category = matching_rows[0].get("Category", "").strip() if matching_rows else ""
-default_sale_price = to_float(matching_rows[0].get("Unit_Sale_Price", "0")) if matching_rows else 0.0
-supplier_options = sorted({r.get("Supplier_Name", "").strip() for r in matching_rows if r.get("Supplier_Name", "").strip()})
+purchase_mode = st.radio("Purchase mode", ["Existing Part", "New Part"], horizontal=True)
+
+if purchase_mode == "Existing Part":
+    selected_category = st.selectbox("Select Category", options=category_names, key="purchase_category")
+    category_rows = [p for p in parts if (p.get("Category", "").strip() or "Uncategorised") == selected_category]
+    part_names = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
+    if not part_names:
+        st.info("No parts found in the selected category.")
+        st.stop()
+    selection = st.selectbox("Select Part", options=part_names, key="purchase_part")
+    matching_rows = [p for p in category_rows if p.get("Part_Name", "").strip() == selection]
+    default_category = selected_category
+    default_sale_price = to_float(matching_rows[0].get("Unit_Sale_Price", "0")) if matching_rows else 0.0
+    supplier_options = sorted({r.get("Supplier_Name", "").strip() for r in matching_rows if r.get("Supplier_Name", "").strip()})
+else:
+    selection = "New Part"
+    matching_rows = []
+    default_category = ""
+    default_sale_price = 0.0
+    supplier_options = []
 
 with st.form("record_purchase_form", clear_on_submit=True):
-    if selection == "New Part":
+    if purchase_mode == "New Part":
         part_name = st.text_input("Part Name")
         category = st.text_input("Category")
         supplier_name = st.text_input("Supplier Name")
@@ -207,13 +230,20 @@ else:
     with c2:
         end_date = st.date_input("End Date", value=max_date, key="purchase_end")
 
+    filter_categories = sorted(df["Category"].dropna().astype(str).replace("", "Uncategorised").unique().tolist())
     supplier_filter = st.selectbox("Supplier", options=["All"] + sorted(df["Supplier_Name"].dropna().astype(str).unique().tolist()))
-    part_filter = st.selectbox("Part Name", options=["All"] + sorted(df["Part_Name"].dropna().astype(str).unique().tolist()))
+    part_filter_category = st.selectbox("Category", options=["All"] + filter_categories)
+    filtered_parts = df.copy()
+    if part_filter_category != "All":
+        filtered_parts = filtered_parts[filtered_parts["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
+    part_filter = st.selectbox("Part Name", options=["All"] + sorted(filtered_parts["Part_Name"].dropna().astype(str).unique().tolist()))
 
     filtered = df.copy()
     filtered = filtered[(filtered["Date"].dt.date >= start_date) & (filtered["Date"].dt.date <= end_date)]
     if supplier_filter != "All":
         filtered = filtered[filtered["Supplier_Name"].astype(str) == supplier_filter]
+    if part_filter_category != "All":
+        filtered = filtered[filtered["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
     if part_filter != "All":
         filtered = filtered[filtered["Part_Name"].astype(str) == part_filter]
 

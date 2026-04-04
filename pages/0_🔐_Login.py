@@ -18,7 +18,7 @@ if is_logged_in():
 st.markdown("""
     <style>
     .login-container {
-        max-width: 400px;
+        max-inline-size: 400px;
         margin: 50px auto;
         padding: 40px;
         border-radius: 10px;
@@ -28,12 +28,12 @@ st.markdown("""
     .login-title {
         text-align: center;
         font-size: 28px;
-        margin-bottom: 10px;
+        margin-block-end: 10px;
     }
     .login-subtitle {
         text-align: center;
         color: #6B7280;
-        margin-bottom: 30px;
+        margin-block-end: 30px;
         font-size: 14px;
     }
     </style>
@@ -42,7 +42,7 @@ st.markdown("""
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.image("logo.png", width=120)
-    st.markdown("<h2 style='text-align: center; margin-top: 0;'>Satyam Tex Fabb</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; margin-block-start: 0;'>Satyam Tex Fabb</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #6B7280;'>Bhilwara, Rajasthan</p>", unsafe_allow_html=True)
 
 st.markdown("---")
@@ -72,7 +72,7 @@ with login_tab:
                     if user_info["must_change"]:
                         st.session_state["force_change_password"] = True
                         st.success("Login successful! You must change your password.")
-                        st.switch_page("pages/9_Change_Password.py")
+                        st.switch_page("pages/11_Change_Password.py")
                     else:
                         st.success("Login successful! Redirecting...")
                         st.switch_page("app.py")

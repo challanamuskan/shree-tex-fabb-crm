@@ -29,9 +29,9 @@ Complete CRM for Satyam Tex Fabb - 30-year-old textile machinery parts dealer in
 | Backend | Python 3.9+ |
 | Database | Google Sheets (gspread) |
 | Email | Gmail API (OAuth2) |
-| WhatsApp | pywhatkit |
+| WhatsApp | click-to-chat links |
 | OCR | pytesseract + pdfplumber |
-| Export | openpyxl + reportlab |
+| Export | openpyxl + xlsxwriter |
 | Auth | SHA-256 hashing |
 | Deployment | Streamlit Community Cloud |
 
