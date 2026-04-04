@@ -289,23 +289,68 @@ else:
             st.info("💡 Try saving your .xls file as .xlsx in Excel: File → Save As → Excel Workbook (.xlsx)")
             st.stop()
 
+        st.write("🔍 DEBUG — Raw columns found in your file:")
+        st.write(list(input_df.columns))
+        st.write("🔍 DEBUG — First 2 raw rows before any mapping:")
+        st.dataframe(input_df.head(2))
+
         if target_name == "Parts (Stock)":
             st.markdown("### 📥 Import Stock from Legacy Excel")
+            input_df.columns = input_df.columns.str.strip()
+            col_lower = {c.lower(): c for c in input_df.columns}
+
             COLUMN_MAP = {
+                "productnameimage": "Part_Name",
+                "productname": "Part_Name",
+                "product_name": "Part_Name",
+                "part_name": "Part_Name",
+                "name": "Part_Name",
+                "price": "Unit_Sale_Price",
+                "unit_sale_price": "Unit_Sale_Price",
+                "sale_price": "Unit_Sale_Price",
+                "unit sale price": "Unit_Sale_Price",
+                "balance": "Quantity",
+                "quantity": "Quantity",
+                "stock": "Quantity",
+                "qty": "Quantity",
+                "category": "Category",
+                "cat": "Category",
                 "cid": "cid",
-                "Category": "Category",
-                "Part_Name": "Part_Name",
-                "Unit_Sale_Price": "Unit_Sale_Price",
-                "Quantity": "Quantity",
-                "Supplier_Name": "Supplier_Name",
+                "clientname": "Supplier_Name",
+                "supplier_name": "Supplier_Name",
+                "supplier": "Supplier_Name",
                 "status": "status",
                 "balancedate": "Date_Added",
+                "date_added": "Date_Added",
                 "id": "Legacy_ID",
                 "pricetype": "Price_Type",
+                "price_type": "Price_Type",
                 "boxnumber": "Box_Number",
+                "box_number": "Box_Number",
             }
 
-            input_df = input_df.rename(columns={k: v for k, v in COLUMN_MAP.items() if k in input_df.columns})
+            rename_dict = {}
+            for orig_col in input_df.columns:
+                lower = orig_col.lower().strip()
+                if lower in COLUMN_MAP:
+                    rename_dict[orig_col] = COLUMN_MAP[lower]
+                elif orig_col in COLUMN_MAP:
+                    rename_dict[orig_col] = COLUMN_MAP[orig_col]
+
+            input_df = input_df.rename(columns=rename_dict)
+
+            st.write("✅ DEBUG — Columns after mapping:")
+            st.write(list(input_df.columns))
+
+            CRITICAL_COLS = ["Category", "Part_Name", "Unit_Sale_Price", "Quantity"]
+            missing = [c for c in CRITICAL_COLS if c not in input_df.columns]
+            found = [c for c in CRITICAL_COLS if c in input_df.columns]
+
+            if missing:
+                st.warning(f"⚠️ These columns were NOT found in your file: {missing}")
+                st.info("Your file may use different column names. Check the DEBUG output above to see exact column names.")
+            else:
+                st.success(f"✅ All critical columns found: {found}")
 
             if "Unit_Sale_Price" in input_df.columns:
                 input_df["Unit_Sale_Price"] = input_df["Unit_Sale_Price"].astype(str).apply(
