@@ -1,4 +1,4 @@
-PARTS_TAB = "Stock Manager"
+PARTS_TAB = "Parts"
 CATEGORIES_TAB = "Categories"
 PRICE_HISTORY_TAB = "Price_History"
 CONTACTS_TAB = "Customers & Leads"
@@ -15,19 +15,18 @@ ATTENDANCE_TAB = "Attendance"
 SETTINGS_TAB = "Settings"
 
 PARTS_HEADERS = [
-    "Part_Name",
-    "Part_Number",
+    "cid",
     "Category",
-    "Supplier_Name",
-    "Supplier_Phone",
-    "Supplier_Email",
-    "Quantity",
-    "Reorder_Level",
-    "Unit_Purchase_Price",
+    "Part_Name",
     "Unit_Sale_Price",
-    "Purchase_Date",
-    "Product_Image",
-    "Part_Documents",
+    "Quantity",
+    "status",
+    "Date_Added",
+    "Legacy_ID",
+    "Price_Type",
+    "Box_Number",
+    "Supplier_Name",
+    "image",
 ]
 
 CATEGORIES_HEADERS = [
