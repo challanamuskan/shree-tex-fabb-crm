@@ -73,10 +73,10 @@ def get_or_create_worksheet(spreadsheet, tab_name, headers):
         ws.append_row(headers, value_input_option="USER_ENTERED")
         return ws
 
-    values = ws.get_all_values()
-    if not values:
+    existing_headers = ws.row_values(1)
+    if not existing_headers:
         ws.append_row(headers, value_input_option="USER_ENTERED")
-    elif values[0][: len(headers)] != headers:
+    elif existing_headers[: len(headers)] != headers:
         ws.update(
             f"A1:{col_letter(len(headers))}1",
             [headers],
@@ -128,6 +128,23 @@ def get_cached_records_by_title(worksheet_title, headers):
             record["_row"] = row_number
             rows.append(record)
         return rows
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=300)
+def get_cached_data(tab_name):
+    from utils.ui import get_spreadsheet_connection
+
+    try:
+        sh = get_spreadsheet_connection()
+        if sh is None:
+            return []
+        ws = sh.worksheet(tab_name)
+        records = ws.get_all_records()
+        for idx, row in enumerate(records, start=2):
+            row["_row"] = idx
+        return records
     except Exception:
         return []
 

