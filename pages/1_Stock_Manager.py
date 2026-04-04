@@ -62,6 +62,15 @@ def serialize_uploaded_files(files):
     return json.dumps(encoded, ensure_ascii=True)
 
 
+def extract_image_payload(raw_value):
+    text = str(raw_value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("data:image") and "," in text:
+        return text.split(",", 1)[1]
+    return text
+
+
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
@@ -80,51 +89,83 @@ sales_records = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADER
 purchase_records = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
 
-if "dismiss_low_stock" not in st.session_state:
-    st.session_state.dismiss_low_stock = False
-
 st.subheader("Current Stock")
-with st.expander("📋 Current Stock Overview — click to expand", expanded=False):
-    if parts:
-        for category in sorted(set(p.get("Category", "Uncategorised") or "Uncategorised" for p in parts)):
-            st.markdown(f"**{category}**")
-            cat_parts = [p for p in parts if (p.get("Category", "Uncategorised") or "Uncategorised") == category]
-            seen_parts = list(dict.fromkeys(p.get("Part_Name", "") for p in cat_parts if p.get("Part_Name", "").strip()))
-            for part_name in seen_parts:
-                part_rows = [p for p in cat_parts if p.get("Part_Name", "") == part_name]
-                total_qty = sum(to_int(p.get("Quantity", 0)) for p in part_rows)
-                reorder = to_int(part_rows[0].get("Reorder_Level", 0)) if part_rows else 0
-                if total_qty <= reorder:
-                    status = "🔴 Low Stock"
-                elif total_qty:
-                    status = "🟢 OK"
-                else:
-                    status = "⚪ No Data"
-                img_b64 = part_rows[0].get("Product_Image", "") if part_rows else ""
+category_values = sorted({(p.get("Category", "").strip() or "Uncategorised") for p in parts})
+search_col, filter_col = st.columns([3, 2])
+with search_col:
+    search_query = st.text_input("🔍 Search part or category", key="stock_search_query").strip().lower()
+with filter_col:
+    selected_category_filter = st.selectbox("Filter by Category", ["All"] + category_values, key="stock_category_filter")
 
-                col1, col2, col3, col4, col5 = st.columns([1, 2, 3, 1, 1])
-                with col1:
-                    if img_b64:
-                        try:
-                            img = base64_to_image(img_b64)
-                            if img is not None:
-                                st.image(img, width=50)
-                            else:
-                                st.write("🔩")
-                        except Exception:
-                            st.write("🔩")
+filtered_parts = []
+for part in parts:
+    category_name = part.get("Category", "").strip() or "Uncategorised"
+    part_name = part.get("Part_Name", "").strip()
+
+    if selected_category_filter != "All" and category_name != selected_category_filter:
+        continue
+
+    if search_query and search_query not in part_name.lower() and search_query not in category_name.lower():
+        continue
+
+    filtered_parts.append(part)
+
+summary_categories = len({(p.get("Category", "").strip() or "Uncategorised") for p in filtered_parts})
+summary_parts = len({p.get("Part_Name", "").strip() for p in filtered_parts if p.get("Part_Name", "").strip()})
+summary_stock_units = sum(to_int(p.get("Quantity", 0)) for p in filtered_parts)
+st.caption(f"Total Categories: {summary_categories} | Total Parts: {summary_parts} | Total Stock Units: {summary_stock_units}")
+
+if not filtered_parts:
+    st.info("No matching parts found.")
+elif search_query:
+    flat_df = pd.DataFrame(
+        [
+            {
+                "Category": p.get("Category", "").strip() or "Uncategorised",
+                "Part_Name": p.get("Part_Name", "").strip(),
+                "Quantity": to_int(p.get("Quantity", 0)),
+                "Unit_Sale_Price": to_float(p.get("Unit_Sale_Price", 0)),
+                "Supplier_Name": p.get("Supplier_Name", "").strip(),
+            }
+            for p in filtered_parts
+        ]
+    )
+    st.dataframe(flat_df, use_container_width=True, hide_index=True)
+else:
+    grouped_by_category = {}
+    for p in filtered_parts:
+        category_name = p.get("Category", "").strip() or "Uncategorised"
+        grouped_by_category.setdefault(category_name, []).append(p)
+
+    for category_name in sorted(grouped_by_category.keys()):
+        category_parts = grouped_by_category[category_name]
+        with st.expander(category_name, expanded=False):
+            compact_df = pd.DataFrame(
+                [
+                    {
+                        "Part_Name": p.get("Part_Name", "").strip(),
+                        "Quantity": to_int(p.get("Quantity", 0)),
+                        "Unit_Sale_Price": to_float(p.get("Unit_Sale_Price", 0)),
+                        "Supplier_Name": p.get("Supplier_Name", "").strip(),
+                    }
+                    for p in category_parts
+                ]
+            )
+            st.dataframe(compact_df, use_container_width=True, hide_index=True)
+
+            unique_parts = sorted({p.get("Part_Name", "").strip() for p in category_parts if p.get("Part_Name", "").strip()})
+            for part_name in unique_parts:
+                part_rows = [p for p in category_parts if p.get("Part_Name", "").strip() == part_name]
+                with st.expander(f"{part_name} image", expanded=False):
+                    first_image = next((extract_image_payload(r.get("Product_Image", "")) for r in part_rows if str(r.get("Product_Image", "")).strip()), "")
+                    if first_image:
+                        image_obj = base64_to_image(first_image)
+                        if image_obj is not None:
+                            st.image(image_obj, width=180)
+                        else:
+                            st.caption("No image")
                     else:
-                        st.write("🔩")
-                with col2:
-                    st.write(category)
-                with col3:
-                    st.write(part_name)
-                with col4:
-                    st.write(f"{total_qty} units")
-                with col5:
-                    st.write(status)
-    else:
-        st.info("No parts found.")
+                        st.caption("No image")
 
 st.subheader("Section A - Category Manager")
 if categories:
@@ -185,7 +226,6 @@ else:
             supplier_email = st.text_input("Supplier Contact Email")
             quantity = st.number_input("Quantity", min_value=0, step=1, value=0)
         with c2:
-            reorder_level = st.number_input("Reorder Level", min_value=0, step=1, value=0)
             unit_purchase_price = st.number_input("Unit Purchase Price", min_value=0.0, step=0.01, format="%.2f")
             unit_sale_price = st.number_input("Unit Sale Price", min_value=0.0, step=0.01, format="%.2f")
             purchase_date = st.date_input("Purchase Date", value=date.today())
@@ -225,7 +265,7 @@ else:
                     "Supplier_Phone": supplier_phone.strip(),
                     "Supplier_Email": supplier_email.strip(),
                     "Quantity": str(int(quantity)),
-                    "Reorder_Level": str(int(reorder_level)),
+                    "Reorder_Level": "0",
                     "Unit_Purchase_Price": f"{float(unit_purchase_price):.2f}",
                     "Unit_Sale_Price": f"{float(unit_sale_price):.2f}",
                     "Purchase_Date": purchase_date.isoformat(),
@@ -244,74 +284,7 @@ else:
 
 st.markdown("---")
 st.subheader("Section C - Stock View")
-
-parts_by_category = {}
-for row in parts:
-    category = row.get("Category", "Uncategorized").strip() or "Uncategorized"
-    part = row.get("Part_Name", "Unnamed Part").strip() or "Unnamed Part"
-    parts_by_category.setdefault(category, {}).setdefault(part, []).append(row)
-
-low_stock_messages = []
-for category_name, grouped_parts in parts_by_category.items():
-    for part_name_key, supplier_rows in grouped_parts.items():
-        total_stock = sum(to_int(r.get("Quantity", "0")) for r in supplier_rows)
-        reorder_level_val = max(to_int(r.get("Reorder_Level", "0")) for r in supplier_rows)
-        if total_stock <= reorder_level_val:
-            low_stock_messages.append(
-                f"⚠️ LOW STOCK ALERT: {part_name_key} — Only {total_stock} units remaining (Reorder level: {reorder_level_val})"
-            )
-
-if low_stock_messages and not st.session_state.dismiss_low_stock:
-    col1, col2 = st.columns([10, 1])
-    with col1:
-        st.error(f"⚠️ LOW STOCK ALERT: {', '.join(low_stock_messages)}")
-    with col2:
-        if st.button("✕", key="dismiss_alert"):
-            st.session_state.dismiss_low_stock = True
-            st.rerun()
-elif not low_stock_messages:
-    st.success("No low stock alerts.")
-
-if not parts_by_category:
-    st.info("No parts found.")
-else:
-    for category_name, grouped_parts in sorted(parts_by_category.items()):
-        st.markdown(f"### {category_name}")
-        part_rows = []
-        for part_name_key, supplier_rows in sorted(grouped_parts.items()):
-            total_stock = sum(to_int(r.get("Quantity", "0")) for r in supplier_rows)
-            reorder_level_val = max(to_int(r.get("Reorder_Level", "0")) for r in supplier_rows)
-            low_alert = "YES" if total_stock <= reorder_level_val else "NO"
-            part_rows.append(
-                {
-                    "Part Name": part_name_key,
-                    "Total Stock": total_stock,
-                    "Reorder Level": reorder_level_val,
-                    "Low Stock Alert": low_alert,
-                }
-            )
-
-            with st.expander(f"{part_name_key} - Total: {total_stock}", expanded=False):
-                first_image = next((r.get("Product_Image", "") for r in supplier_rows if r.get("Product_Image", "")), "")
-                if first_image:
-                    img = base64_to_image(first_image)
-                    if img is not None:
-                        st.image(img, width=140)
-
-                breakdown = pd.DataFrame(
-                    [
-                        {
-                            "Supplier": r.get("Supplier_Name", ""),
-                            "Their Price": to_float(r.get("Unit_Purchase_Price", "0")),
-                            "Their Quantity": to_int(r.get("Quantity", "0")),
-                            "Contact": f"{r.get('Supplier_Phone', '').strip()} / {r.get('Supplier_Email', '').strip()}",
-                        }
-                        for r in supplier_rows
-                    ]
-                )
-                st.dataframe(breakdown, use_container_width=True, hide_index=True)
-
-        st.dataframe(pd.DataFrame(part_rows), use_container_width=True, hide_index=True)
+st.caption("Use the Current Stock section above for grouped stock browsing, search, and category filtering.")
 
 st.markdown("---")
 st.subheader("Section D - Price Management (admin only)")
@@ -535,13 +508,6 @@ if check_admin_access():
             selected_part_rows = [r for r in part_candidates if r.get("Part_Name", "").strip() == edit_part_name]
             base_row = selected_part_rows[0]
 
-            edit_reorder = st.number_input(
-                "Reorder Level",
-                min_value=0,
-                step=1,
-                value=to_int(base_row.get("Reorder_Level", "0")),
-                key="admin_part_reorder",
-            )
             edit_purchase_price = st.number_input(
                 "Unit Purchase Price",
                 min_value=0.0,
@@ -558,10 +524,19 @@ if check_admin_access():
                 format="%.2f",
                 key="admin_part_sale_price",
             )
+            edit_image_file = st.file_uploader(
+                "Upload Part Image (optional)",
+                type=["jpg", "jpeg", "png", "webp"],
+                key="admin_part_image_upload",
+            )
+
+            updated_image_b64 = ""
+            if edit_image_file is not None:
+                updated_image_b64 = base64.b64encode(edit_image_file.getvalue()).decode()
 
             part_col1, part_col2 = st.columns(2)
             with part_col1:
-                if st.button("Update Part Prices/Reorder", key="admin_update_part"):
+                if st.button("Save Part Changes", key="admin_update_part"):
                     for row in selected_part_rows:
                         update_record(
                             parts_ws,
@@ -575,11 +550,11 @@ if check_admin_access():
                                 "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
                                 "Supplier_Email": row.get("Supplier_Email", "").strip(),
                                 "Quantity": str(to_int(row.get("Quantity", "0"))),
-                                "Reorder_Level": str(int(edit_reorder)),
+                                "Reorder_Level": row.get("Reorder_Level", "").strip(),
                                 "Unit_Purchase_Price": f"{float(edit_purchase_price):.2f}",
                                 "Unit_Sale_Price": f"{float(edit_sale_price):.2f}",
                                 "Purchase_Date": row.get("Purchase_Date", "").strip(),
-                                "Product_Image": row.get("Product_Image", ""),
+                                "Product_Image": updated_image_b64 if updated_image_b64 else row.get("Product_Image", ""),
                                 "Part_Documents": row.get("Part_Documents", ""),
                             },
                         )
