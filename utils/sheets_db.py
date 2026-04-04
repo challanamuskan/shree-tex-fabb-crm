@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import gspread
+import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
 
 SCOPES = [
@@ -85,6 +86,7 @@ def get_or_create_worksheet(spreadsheet, tab_name, headers):
     return ws
 
 
+@st.cache_data(ttl=30, show_spinner=False, hash_funcs={"gspread.worksheet.Worksheet": lambda _: None})
 def read_records(worksheet, headers):
     values = worksheet.get_all_values()
     if len(values) <= 1:
