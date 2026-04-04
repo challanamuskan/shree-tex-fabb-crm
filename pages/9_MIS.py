@@ -16,7 +16,7 @@ from utils.constants import (
     EMPLOYEE_TASKS_HEADERS,
     EMPLOYEE_TASKS_TAB,
 )
-from utils.sheets_db import append_record, get_cached_data, get_or_create_worksheet, update_record
+from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
@@ -89,10 +89,10 @@ tasks_ws = get_or_create_worksheet(spreadsheet, EMPLOYEE_TASKS_TAB, EMPLOYEE_TAS
 reports_ws = get_or_create_worksheet(spreadsheet, DAILY_REPORTS_TAB, DAILY_REPORTS_HEADERS)
 attendance_ws = get_or_create_worksheet(spreadsheet, ATTENDANCE_TAB, ATTENDANCE_HEADERS)
 
-employees = get_cached_data(employees_ws.title)
-tasks = get_cached_data(tasks_ws.title)
-reports = get_cached_data(reports_ws.title)
-attendance_records = get_cached_data(attendance_ws.title)
+employees = fetch_sheet_data_by_name(EMPLOYEES_TAB, EMPLOYEES_HEADERS)
+tasks = fetch_sheet_data_by_name(EMPLOYEE_TASKS_TAB, EMPLOYEE_TASKS_HEADERS)
+reports = fetch_sheet_data_by_name(DAILY_REPORTS_TAB, DAILY_REPORTS_HEADERS)
+attendance_records = fetch_sheet_data_by_name(ATTENDANCE_TAB, ATTENDANCE_HEADERS)
 
 section = st.radio(
     "Select Section",

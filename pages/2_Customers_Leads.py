@@ -10,7 +10,7 @@ from utils.constants import CONTACTS_HEADERS, CONTACTS_TAB
 from utils.sheets_db import (
     append_record,
     delete_record,
-    get_cached_records_by_title,
+    fetch_sheet_data_by_name,
     get_or_create_worksheet,
     update_record,
 )
@@ -37,7 +37,7 @@ if not spreadsheet:
     st.stop()
 
 worksheet = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-records = get_cached_records_by_title(worksheet.title, CONTACTS_HEADERS)
+records = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
 
 st.subheader("Contacts")
 if records:

@@ -24,7 +24,7 @@ from utils.file_handler import base64_to_image, image_to_base64
 from utils.sheets_db import (
     append_record,
     delete_record,
-    get_cached_records_by_title,
+    fetch_sheet_data_by_name,
     get_or_create_worksheet,
     update_record,
 )
@@ -73,12 +73,12 @@ sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS
 purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
-parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
-categories = get_cached_records_by_title(categories_ws.title, CATEGORIES_HEADERS)
-price_history = get_cached_records_by_title(price_history_ws.title, PRICE_HISTORY_HEADERS)
-sales_records = get_cached_records_by_title(sales_ws.title, SALES_RECORDS_HEADERS)
-purchase_records = get_cached_records_by_title(purchase_ws.title, PURCHASE_RECORDS_HEADERS)
-returns_records = get_cached_records_by_title(returns_ws.title, RETURNS_HEADERS)
+parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
+categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
+price_history = fetch_sheet_data_by_name(PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
+sales_records = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
+purchase_records = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
+returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
 
 if "dismiss_low_stock" not in st.session_state:
     st.session_state.dismiss_low_stock = False

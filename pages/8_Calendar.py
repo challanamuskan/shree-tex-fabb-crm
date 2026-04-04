@@ -15,7 +15,7 @@ from utils.constants import (
     PAYMENTS_HEADERS,
     PAYMENTS_TAB,
 )
-from utils.sheets_db import get_cached_data, get_or_create_worksheet
+from utils.sheets_db import fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 
@@ -69,9 +69,9 @@ contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADER
 payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
 email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
 
-contacts = get_cached_data(contacts_ws.title)
-payments = get_cached_data(payments_ws.title)
-email_logs = get_cached_data(email_log_ws.title)
+contacts = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
+payments = fetch_sheet_data_by_name(PAYMENTS_TAB, PAYMENTS_HEADERS)
+email_logs = fetch_sheet_data_by_name(EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
 
 state_key = "calendar_first_day"
 if state_key not in st.session_state:

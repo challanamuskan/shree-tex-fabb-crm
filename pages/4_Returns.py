@@ -6,7 +6,7 @@ import streamlit as st
 
 from utils.auth import require_login
 from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, RETURNS_HEADERS, RETURNS_TAB
-from utils.sheets_db import append_record, get_cached_records_by_title, get_or_create_worksheet, update_record
+from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -49,8 +49,8 @@ parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
 categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
-parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
-categories = get_cached_records_by_title(categories_ws.title, CATEGORIES_HEADERS)
+parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
+categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
 category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
 if not category_names:
     category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
