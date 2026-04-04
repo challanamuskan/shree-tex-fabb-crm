@@ -106,7 +106,7 @@ pos = read_records(pos_ws, PURCHASE_ORDERS_HEADERS)
 low_stock_parts = [
     part
     for part in parts
-    if to_int(part.get("Quantity", 0)) < to_int(part.get("Reorder Level", 0))
+    if to_int(part.get("Quantity", 0)) < to_int(part.get("Reorder_Level", 0))
 ]
 
 pending_payments = [payment for payment in payments if payment.get("Status", "").strip().lower() != "paid"]
@@ -129,8 +129,16 @@ with primary_col:
     st.markdown("### 📦 Low Stock Parts")
     if low_stock_parts:
         low_df = pd.DataFrame(low_stock_parts)[
-            ["Part Number", "Part Name", "Quantity", "Reorder Level", "Supplier Name"]
+            ["Part_Number", "Part_Name", "Quantity", "Reorder_Level", "Supplier_Name"]
         ]
+        low_df = low_df.rename(
+            columns={
+                "Part_Number": "Part Number",
+                "Part_Name": "Part Name",
+                "Reorder_Level": "Reorder Level",
+                "Supplier_Name": "Supplier Name",
+            }
+        )
         st.dataframe(low_df, use_container_width=True, hide_index=True)
     else:
         st.success("No low stock alerts.")
@@ -181,6 +189,6 @@ else:
 
 st.markdown("---")
 st.caption(
-    "Use the left sidebar to switch pages: Stock Manager, Customers & Leads, Payments, "
-    "Purchase Orders, Payment Reminders, Promotional Emails, Calendar, MIS System."
+    "Use the left sidebar to switch pages: Stock Manager, Sales, Purchases, Returns, Customers & Leads, "
+    "Payments, Purchase Orders, Payment Reminders, Promotional Emails, Calendar, MIS System, Data Export & Import."
 )

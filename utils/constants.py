@@ -1,4 +1,6 @@
 PARTS_TAB = "Stock Manager"
+CATEGORIES_TAB = "Categories"
+PRICE_HISTORY_TAB = "Price_History"
 CONTACTS_TAB = "Customers & Leads"
 PAYMENTS_TAB = "Payments"
 PURCHASE_ORDERS_TAB = "Purchase Orders"
@@ -12,48 +14,72 @@ DAILY_REPORTS_TAB = "Daily_Reports"
 ATTENDANCE_TAB = "Attendance"
 
 PARTS_HEADERS = [
-    "Part Number",
-    "Part Name",
+    "Part_Name",
+    "Part_Number",
     "Category",
+    "Supplier_Name",
+    "Supplier_Phone",
+    "Supplier_Email",
     "Quantity",
-    "Reorder Level",
-    "Unit Price",
-    "Supplier Name",
-    "Purchase Date",
+    "Reorder_Level",
+    "Unit_Purchase_Price",
+    "Unit_Sale_Price",
+    "Purchase_Date",
     "Product_Image",
+    "Part_Documents",
+]
+
+CATEGORIES_HEADERS = [
+    "Category_Name",
+    "Description",
+    "Created_Date",
+]
+
+PRICE_HISTORY_HEADERS = [
+    "Date",
+    "Part_Name",
+    "Supplier_Name",
+    "Old_Price",
+    "New_Price",
+    "Updated_By",
 ]
 
 SALES_RECORDS_HEADERS = [
     "Date",
-    "Part Name",
-    "Quantity Sold",
-    "Sale Invoice Number",
-    "Party Name",
-    "Sale Price Per Unit",
-    "Total Sale Value",
-    "Sale_Bill",
+    "Part_Name",
+    "Category",
+    "Supplier",
+    "Quantity_Sold",
+    "Sale_Invoice_Number",
+    "Party_Name",
+    "Sale_Price_Per_Unit",
+    "Total_Sale_Value",
+    "Sale_Bill_Images",
 ]
 
 PURCHASE_RECORDS_HEADERS = [
     "Date",
-    "Part Name",
-    "Quantity Purchased",
-    "Purchase Invoice Number",
-    "Supplier Name",
-    "Purchase Price Per Unit",
-    "Total Purchase Value",
-    "Purchase_Bill",
+    "Part_Name",
+    "Category",
+    "Supplier_Name",
+    "Quantity_Purchased",
+    "Purchase_Invoice_Number",
+    "Purchase_Price_Per_Unit",
+    "Total_Purchase_Value",
+    "Purchase_Bill_Images",
 ]
 
 RETURNS_HEADERS = [
     "Date",
     "Type",
-    "Part Name",
+    "Part_Name",
+    "Category",
+    "Supplier_Name",
     "Quantity",
-    "Invoice Number",
-    "Party/Supplier Name",
+    "Invoice_Number",
+    "Party_Supplier_Name",
     "Reason",
-    "Return_Document",
+    "Return_Documents",
 ]
 
 CONTACTS_HEADERS = [
