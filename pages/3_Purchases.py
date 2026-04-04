@@ -16,7 +16,7 @@ from utils.constants import (
     PURCHASE_RECORDS_HEADERS,
     PURCHASE_RECORDS_TAB,
 )
-from utils.sheets_db import append_record, get_or_create_worksheet, read_records, update_record
+from utils.sheets_db import append_record, get_cached_records, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -60,9 +60,9 @@ categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_
 purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 price_history_ws = get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
 
-parts = read_records(parts_ws, PARTS_HEADERS)
-categories = read_records(categories_ws, CATEGORIES_HEADERS)
-purchases = read_records(purchase_ws, PURCHASE_RECORDS_HEADERS)
+parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
+categories = get_cached_records(categories_ws, categories_ws.title, CATEGORIES_HEADERS)
+purchases = get_cached_records(purchase_ws, purchase_ws.title, PURCHASE_RECORDS_HEADERS)
 category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
 if not category_names:
     category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})

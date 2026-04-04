@@ -24,11 +24,11 @@ from utils.file_handler import base64_to_image, image_to_base64
 from utils.sheets_db import (
     append_record,
     delete_record,
+    get_cached_records,
     get_or_create_worksheet,
-    read_records,
     update_record,
 )
-from utils.ui import get_spreadsheet_connection, init_page
+from utils.ui import check_admin_access, get_spreadsheet_connection, init_page
 
 require_login()
 init_page("Stock Manager")
@@ -73,12 +73,12 @@ sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS
 purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
-parts = read_records(parts_ws, PARTS_HEADERS)
-categories = read_records(categories_ws, CATEGORIES_HEADERS)
-price_history = read_records(price_history_ws, PRICE_HISTORY_HEADERS)
-sales_records = read_records(sales_ws, SALES_RECORDS_HEADERS)
-purchase_records = read_records(purchase_ws, PURCHASE_RECORDS_HEADERS)
-returns_records = read_records(returns_ws, RETURNS_HEADERS)
+parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
+categories = get_cached_records(categories_ws, categories_ws.title, CATEGORIES_HEADERS)
+price_history = get_cached_records(price_history_ws, price_history_ws.title, PRICE_HISTORY_HEADERS)
+sales_records = get_cached_records(sales_ws, sales_ws.title, SALES_RECORDS_HEADERS)
+purchase_records = get_cached_records(purchase_ws, purchase_ws.title, PURCHASE_RECORDS_HEADERS)
+returns_records = get_cached_records(returns_ws, returns_ws.title, RETURNS_HEADERS)
 
 if "dismiss_low_stock" not in st.session_state:
     st.session_state.dismiss_low_stock = False
@@ -166,18 +166,6 @@ with st.form("add_category_form", clear_on_submit=True):
                 )
                 st.success("Category added.")
                 st.rerun()
-
-if is_admin() and categories:
-    delete_map = {
-        f"{r.get('Category_Name', '').strip()}": r
-        for r in categories
-        if r.get("Category_Name", "").strip()
-    }
-    selected_delete = st.selectbox("Delete Category (admin only)", options=list(delete_map.keys()))
-    if st.button("Delete category"):
-        delete_record(categories_ws, delete_map[selected_delete]["_row"])
-        st.success("Category deleted.")
-        st.rerun()
 
 st.markdown("---")
 st.subheader("Section B - Add Part")
@@ -482,3 +470,127 @@ if returns_on_date:
     )
 else:
     st.info("No returns on selected date.")
+
+st.markdown("---")
+st.subheader("🛠️ Admin Controls (Edit / Delete)")
+
+if check_admin_access():
+    st.markdown("### Edit / Delete Category")
+    category_map = {
+        r.get("Category_Name", "").strip(): r
+        for r in categories
+        if r.get("Category_Name", "").strip()
+    }
+
+    if not category_map:
+        st.info("No categories available.")
+    else:
+        selected_category_name = st.selectbox(
+            "Select Category",
+            options=sorted(category_map.keys()),
+            key="admin_category_select",
+        )
+        selected_category_row = category_map[selected_category_name]
+        edited_description = st.text_input(
+            "Category Description",
+            value=selected_category_row.get("Description", "").strip(),
+            key="admin_category_description",
+        )
+
+        cat_col1, cat_col2 = st.columns(2)
+        with cat_col1:
+            if st.button("Update Category", key="admin_update_category"):
+                update_record(
+                    categories_ws,
+                    selected_category_row["_row"],
+                    CATEGORIES_HEADERS,
+                    {
+                        "Category_Name": selected_category_name,
+                        "Description": edited_description.strip(),
+                        "Created_Date": selected_category_row.get("Created_Date", "").strip() or date.today().isoformat(),
+                    },
+                )
+                st.success("Category updated.")
+                st.rerun()
+
+        with cat_col2:
+            if st.button("Delete Category", key="admin_delete_category"):
+                delete_record(categories_ws, selected_category_row["_row"])
+                st.success("Category deleted from Categories sheet.")
+                st.rerun()
+
+    st.markdown("### Edit / Delete Part")
+    category_options = sorted({(r.get("Category", "").strip() or "Uncategorised") for r in parts})
+    if not category_options:
+        st.info("No parts available.")
+    else:
+        edit_category = st.selectbox("Part Category", options=category_options, key="admin_part_category")
+        part_candidates = [r for r in parts if (r.get("Category", "").strip() or "Uncategorised") == edit_category]
+        part_names = sorted({r.get("Part_Name", "").strip() for r in part_candidates if r.get("Part_Name", "").strip()})
+
+        if not part_names:
+            st.info("No parts found in selected category.")
+        else:
+            edit_part_name = st.selectbox("Part Name", options=part_names, key="admin_part_name")
+            selected_part_rows = [r for r in part_candidates if r.get("Part_Name", "").strip() == edit_part_name]
+            base_row = selected_part_rows[0]
+
+            edit_reorder = st.number_input(
+                "Reorder Level",
+                min_value=0,
+                step=1,
+                value=to_int(base_row.get("Reorder_Level", "0")),
+                key="admin_part_reorder",
+            )
+            edit_purchase_price = st.number_input(
+                "Unit Purchase Price",
+                min_value=0.0,
+                step=0.01,
+                value=to_float(base_row.get("Unit_Purchase_Price", "0")),
+                format="%.2f",
+                key="admin_part_purchase_price",
+            )
+            edit_sale_price = st.number_input(
+                "Unit Sale Price",
+                min_value=0.0,
+                step=0.01,
+                value=to_float(base_row.get("Unit_Sale_Price", "0")),
+                format="%.2f",
+                key="admin_part_sale_price",
+            )
+
+            part_col1, part_col2 = st.columns(2)
+            with part_col1:
+                if st.button("Update Part Prices/Reorder", key="admin_update_part"):
+                    for row in selected_part_rows:
+                        update_record(
+                            parts_ws,
+                            row["_row"],
+                            PARTS_HEADERS,
+                            {
+                                "Part_Name": row.get("Part_Name", "").strip(),
+                                "Part_Number": row.get("Part_Number", "").strip(),
+                                "Category": row.get("Category", "").strip(),
+                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
+                                "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
+                                "Supplier_Email": row.get("Supplier_Email", "").strip(),
+                                "Quantity": str(to_int(row.get("Quantity", "0"))),
+                                "Reorder_Level": str(int(edit_reorder)),
+                                "Unit_Purchase_Price": f"{float(edit_purchase_price):.2f}",
+                                "Unit_Sale_Price": f"{float(edit_sale_price):.2f}",
+                                "Purchase_Date": row.get("Purchase_Date", "").strip(),
+                                "Product_Image": row.get("Product_Image", ""),
+                                "Part_Documents": row.get("Part_Documents", ""),
+                            },
+                        )
+                    st.success("Part details updated for all supplier rows.")
+                    st.rerun()
+
+            with part_col2:
+                if st.button("Delete Part", key="admin_delete_part"):
+                    for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
+                        delete_record(parts_ws, row["_row"])
+                    st.success("Part deleted from stock records.")
+                    st.rerun()
+else:
+    st.info("🔐 Admin access required to edit or delete records.")

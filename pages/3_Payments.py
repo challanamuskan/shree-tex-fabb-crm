@@ -10,8 +10,8 @@ from utils.constants import PAYMENTS_HEADERS, PAYMENTS_TAB
 from utils.sheets_db import (
     append_record,
     delete_record,
+    get_cached_records,
     get_or_create_worksheet,
-    read_records,
     update_record,
 )
 from utils.file_handler import upload_and_scan_widget
@@ -74,7 +74,7 @@ if not spreadsheet:
     st.stop()
 
 worksheet = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
-records = read_records(worksheet, PAYMENTS_HEADERS)
+records = get_cached_records(worksheet, worksheet.title, PAYMENTS_HEADERS)
 
 st.subheader("Payment Dues")
 if records:

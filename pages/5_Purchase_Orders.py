@@ -16,7 +16,7 @@ from utils.constants import (
 )
 from utils.file_handler import upload_and_scan_widget
 from utils.gmail_sender import get_gmail_service, send_email
-from utils.sheets_db import append_record, delete_record, get_or_create_worksheet, read_records, update_record
+from utils.sheets_db import append_record, delete_record, get_cached_records, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
@@ -89,10 +89,10 @@ parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
 categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
 
-records = read_records(worksheet, PURCHASE_ORDERS_HEADERS)
-parts_records = read_records(parts_ws, PARTS_HEADERS)
-categories_records = read_records(categories_ws, CATEGORIES_HEADERS)
-contact_records = read_records(contacts_ws, CONTACTS_HEADERS)
+records = get_cached_records(worksheet, worksheet.title, PURCHASE_ORDERS_HEADERS)
+parts_records = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
+categories_records = get_cached_records(categories_ws, categories_ws.title, CATEGORIES_HEADERS)
+contact_records = get_cached_records(contacts_ws, contacts_ws.title, CONTACTS_HEADERS)
 category_names = sorted({r.get("Category_Name", "").strip() for r in categories_records if r.get("Category_Name", "").strip()})
 if not category_names:
     category_names = sorted({r.get("Category", "").strip() or "Uncategorised" for r in parts_records})
