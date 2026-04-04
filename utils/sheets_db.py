@@ -86,7 +86,6 @@ def get_or_create_worksheet(spreadsheet, tab_name, headers):
     return ws
 
 
-@st.cache_data(ttl=30, show_spinner=False, hash_funcs={"gspread.worksheet.Worksheet": lambda _: None})
 def read_records(worksheet, headers):
     values = worksheet.get_all_values()
     if len(values) <= 1:
@@ -106,9 +105,16 @@ def read_records(worksheet, headers):
     return rows
 
 
+@st.cache_data(ttl=60)
+def get_cached_records(_worksheet, worksheet_key, headers):
+    del worksheet_key  # Included only to ensure cache entries differ per worksheet.
+    return read_records(_worksheet, headers)
+
+
 def append_record(worksheet, headers, payload):
     row = [payload.get(header, "") for header in headers]
     worksheet.append_row(row, value_input_option="USER_ENTERED")
+    st.cache_data.clear()
 
 
 def update_record(worksheet, row_number, headers, payload):
@@ -118,7 +124,9 @@ def update_record(worksheet, row_number, headers, payload):
         [row],
         value_input_option="USER_ENTERED",
     )
+    st.cache_data.clear()
 
 
 def delete_record(worksheet, row_number):
     worksheet.delete_rows(row_number)
+    st.cache_data.clear()

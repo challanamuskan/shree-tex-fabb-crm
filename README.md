@@ -14,6 +14,8 @@ Complete CRM for Satyam Tex Fabb - 30-year-old textile machinery parts dealer in
 - 📅 Calendar - Colour-coded payment dues and follow-up dates
 - 📊 MIS - Daily task assignment, employee attendance, performance dashboard
 - 🔐 Login - Role-based access (Admin/Employee) with password management
+- ⚡ **Performance Optimized** — Implemented intelligent data caching to prevent Google Sheets API rate limits and ensure fast load times.
+- 🛠️ **Admin Controls** — Secure edit and delete capabilities for Categories and Parts.
 - 📤 Export/Import - Excel, CSV, PDF export; Tally import support
 - 🔍 OCR Bill Scanning - Upload a photo of a bill, data auto-fills form fields
 - ⚠️ Low Stock Alerts - Real-time reorder notifications when stock hits threshold

@@ -20,7 +20,7 @@ from utils.constants import (
     PURCHASE_ORDERS_HEADERS,
     PURCHASE_ORDERS_TAB,
 )
-from utils.sheets_db import get_or_create_worksheet, read_records
+from utils.sheets_db import get_cached_records, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 
@@ -63,6 +63,9 @@ with st.sidebar:
     st.sidebar.write(f"👤 {st.session_state.get('user_fullname', 'User')}")
     st.caption(f"Role: {st.session_state.get('user_role', 'unknown').capitalize()}")
     st.markdown("---")
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
     if st.button("🔑 Change Password", use_container_width=True):
         st.switch_page("pages/11_Change_Password.py")
     if st.button("🚪 Logout", use_container_width=True):
@@ -98,10 +101,10 @@ contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADER
 payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
 pos_ws = get_or_create_worksheet(spreadsheet, PURCHASE_ORDERS_TAB, PURCHASE_ORDERS_HEADERS)
 
-parts = read_records(parts_ws, PARTS_HEADERS)
-contacts = read_records(contacts_ws, CONTACTS_HEADERS)
-payments = read_records(payments_ws, PAYMENTS_HEADERS)
-pos = read_records(pos_ws, PURCHASE_ORDERS_HEADERS)
+parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
+contacts = get_cached_records(contacts_ws, contacts_ws.title, CONTACTS_HEADERS)
+payments = get_cached_records(payments_ws, payments_ws.title, PAYMENTS_HEADERS)
+pos = get_cached_records(pos_ws, pos_ws.title, PURCHASE_ORDERS_HEADERS)
 
 low_stock_parts = [
     part
@@ -175,7 +178,7 @@ with secondary_col:
 st.markdown("---")
 
 email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
-email_log = read_records(email_log_ws, EMAIL_LOG_HEADERS)
+email_log = get_cached_records(email_log_ws, email_log_ws.title, EMAIL_LOG_HEADERS)
 
 if email_log:
     st.markdown("### 📧 Recent Email Activity")
