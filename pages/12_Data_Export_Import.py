@@ -25,7 +25,7 @@ from utils.constants import (
     SALES_RECORDS_HEADERS,
     SALES_RECORDS_TAB,
 )
-from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet
+from utils.sheets_db import bulk_append_records, fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -276,15 +276,31 @@ else:
 
         if st.button("Import Data"):
             target_ws = get_or_create_worksheet(spreadsheet, target_tab, target_headers)
-            imported = 0
-            for _, row in input_df.iterrows():
-                payload = {}
-                for header in target_headers:
-                    src = mapping[header]
-                    payload[header] = "" if src == "-- Skip --" else str(row.get(src, ""))
-                append_record(target_ws, target_headers, payload)
-                imported += 1
-            st.success(f"Import complete: {imported} rows imported successfully.")
+
+            # Build a mapped dataframe that matches target headers exactly.
+            mapped_df = pd.DataFrame()
+            for header in target_headers:
+                src = mapping[header]
+                if src == "-- Skip --":
+                    mapped_df[header] = ""
+                else:
+                    mapped_df[header] = input_df[src]
+
+            # Ensure df columns match target_headers exactly
+            ordered_df = mapped_df[target_headers]
+            # Convert all NaN/NaT to empty strings so Google Sheets accepts it
+            ordered_df = ordered_df.fillna("")
+            # Convert dataframe to a list of lists
+            list_of_rows = ordered_df.values.tolist()
+
+            # Send everything in ONE single API call
+            with st.spinner("Bulk uploading data to Google Sheets..."):
+                success = bulk_append_records(target_ws, list_of_rows)
+
+            if success:
+                st.success(f"✅ Successfully imported {len(list_of_rows)} records in bulk!")
+                # Clear cache so the new data shows up across the app
+                st.cache_data.clear()
 
 st.markdown("---")
 st.subheader("Section C - Tally Export Guide")

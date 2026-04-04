@@ -175,6 +175,21 @@ def append_record(worksheet, headers, payload):
     st.cache_data.clear()
 
 
+def bulk_append_records(worksheet, list_of_rows):
+    """
+    Appends multiple rows in a single API call.
+    list_of_rows should be a list of lists: [[row1_data...], [row2_data...]]
+    """
+    try:
+        worksheet.append_rows(list_of_rows, value_input_option="USER_ENTERED")
+        return True
+    except Exception as e:
+        import streamlit as st
+
+        st.error(f"Bulk upload failed: {e}")
+        return False
+
+
 def update_record(worksheet, row_number, headers, payload):
     row = [payload.get(header, "") for header in headers]
     worksheet.update(
