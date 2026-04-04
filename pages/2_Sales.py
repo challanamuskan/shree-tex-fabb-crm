@@ -7,7 +7,7 @@ import streamlit as st
 
 from utils.auth import require_login
 from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, SALES_RECORDS_HEADERS, SALES_RECORDS_TAB
-from utils.sheets_db import append_record, get_cached_records, get_or_create_worksheet, update_record
+from utils.sheets_db import append_record, get_cached_records_by_title, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -50,9 +50,9 @@ parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
 categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
 
-parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
-categories = get_cached_records(categories_ws, categories_ws.title, CATEGORIES_HEADERS)
-sales = get_cached_records(sales_ws, sales_ws.title, SALES_RECORDS_HEADERS)
+parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
+categories = get_cached_records_by_title(categories_ws.title, CATEGORIES_HEADERS)
+sales = get_cached_records_by_title(sales_ws.title, SALES_RECORDS_HEADERS)
 category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
 if not category_names:
     category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
@@ -67,91 +67,91 @@ else:
         part_names = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
         if not part_names:
             st.info("No parts found in the selected category.")
-            st.stop()
+            st.form_submit_button("Record Sale", disabled=True)
+        else:
+            selected_part = st.selectbox("Select Part", options=part_names, key="sale_part")
 
-        selected_part = st.selectbox("Select Part", options=part_names, key="sale_part")
+            matching_rows = [p for p in category_rows if p.get("Part_Name", "").strip() == selected_part]
+            total_stock = sum(to_int(r.get("Quantity", "0")) for r in matching_rows)
+            st.caption(f"Available stock: {total_stock}")
 
-        matching_rows = [p for p in category_rows if p.get("Part_Name", "").strip() == selected_part]
-        total_stock = sum(to_int(r.get("Quantity", "0")) for r in matching_rows)
-        st.caption(f"Available stock: {total_stock}")
+            supplier_options = sorted({r.get("Supplier_Name", "").strip() for r in matching_rows if r.get("Supplier_Name", "").strip()})
+            supplier_choice = st.selectbox("Supplier", options=["Any"] + supplier_options)
 
-        supplier_options = sorted({r.get("Supplier_Name", "").strip() for r in matching_rows if r.get("Supplier_Name", "").strip()})
-        supplier_choice = st.selectbox("Supplier", options=["Any"] + supplier_options)
+            qty_sold = st.number_input("Quantity Sold", min_value=1, step=1, value=1)
+            sale_invoice = st.text_input("Sale Invoice Number")
+            party_name = st.text_input("Party Name")
+            sale_date = st.date_input("Sale Date", value=date.today())
+            default_sale_price = to_float(matching_rows[0].get("Unit_Sale_Price", "0")) if matching_rows else 0.0
+            sale_price = st.number_input("Sale Price Per Unit", min_value=0.0, step=0.01, value=default_sale_price, format="%.2f")
+            sale_bills = st.file_uploader(
+                "Upload Sale Bill (optional)",
+                type=["jpg", "jpeg", "png", "pdf"],
+                accept_multiple_files=True,
+                key="sale_bills",
+            )
 
-        qty_sold = st.number_input("Quantity Sold", min_value=1, step=1, value=1)
-        sale_invoice = st.text_input("Sale Invoice Number")
-        party_name = st.text_input("Party Name")
-        sale_date = st.date_input("Sale Date", value=date.today())
-        default_sale_price = to_float(matching_rows[0].get("Unit_Sale_Price", "0")) if matching_rows else 0.0
-        sale_price = st.number_input("Sale Price Per Unit", min_value=0.0, step=0.01, value=default_sale_price, format="%.2f")
-        sale_bills = st.file_uploader(
-            "Upload Sale Bill (optional)",
-            type=["jpg", "jpeg", "png", "pdf"],
-            accept_multiple_files=True,
-            key="sale_bills",
-        )
-
-        submit_button = st.form_submit_button("Record Sale")
-        if submit_button:
-            if qty_sold > total_stock:
-                st.error(f"Quantity sold exceeds available stock ({total_stock}).")
-            elif not sale_invoice.strip() or not party_name.strip():
-                st.error("Sale Invoice Number and Party Name are required.")
-            else:
-                remaining = int(qty_sold)
-                rows_to_update = []
-                rows_scope = matching_rows if supplier_choice == "Any" else [r for r in matching_rows if r.get("Supplier_Name", "").strip() == supplier_choice]
-                rows_scope = sorted(rows_scope, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)
-
-                for row in rows_scope:
-                    if remaining <= 0:
-                        break
-                    available = to_int(row.get("Quantity", "0"))
-                    take = min(available, remaining)
-                    if take <= 0:
-                        continue
-                    remaining -= take
-                    rows_to_update.append((row, available - take))
-
-                if remaining > 0:
-                    st.error("Not enough stock in selected supplier scope.")
+            submit_button = st.form_submit_button("Record Sale")
+            if submit_button:
+                if qty_sold > total_stock:
+                    st.error(f"Quantity sold exceeds available stock ({total_stock}).")
+                elif not sale_invoice.strip() or not party_name.strip():
+                    st.error("Sale Invoice Number and Party Name are required.")
                 else:
-                    for row, new_qty in rows_to_update:
-                        payload = {
-                            "Part_Name": row.get("Part_Name", "").strip(),
-                            "Part_Number": row.get("Part_Number", "").strip(),
-                            "Category": row.get("Category", "").strip(),
-                            "Supplier_Name": row.get("Supplier_Name", "").strip(),
-                            "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
-                            "Supplier_Email": row.get("Supplier_Email", "").strip(),
-                            "Quantity": str(new_qty),
-                            "Reorder_Level": str(to_int(row.get("Reorder_Level", "0"))),
-                            "Unit_Purchase_Price": f"{to_float(row.get('Unit_Purchase_Price', '0')):.2f}",
-                            "Unit_Sale_Price": f"{to_float(row.get('Unit_Sale_Price', '0')):.2f}",
-                            "Purchase_Date": row.get("Purchase_Date", "").strip(),
-                            "Product_Image": row.get("Product_Image", ""),
-                            "Part_Documents": row.get("Part_Documents", ""),
-                        }
-                        update_record(parts_ws, row["_row"], PARTS_HEADERS, payload)
+                    remaining = int(qty_sold)
+                    rows_to_update = []
+                    rows_scope = matching_rows if supplier_choice == "Any" else [r for r in matching_rows if r.get("Supplier_Name", "").strip() == supplier_choice]
+                    rows_scope = sorted(rows_scope, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)
 
-                    append_record(
-                        sales_ws,
-                        SALES_RECORDS_HEADERS,
-                        {
-                            "Date": sale_date.isoformat(),
-                            "Part_Name": selected_part,
-                            "Category": selected_category,
-                            "Supplier": supplier_choice,
-                            "Quantity_Sold": str(int(qty_sold)),
-                            "Sale_Invoice_Number": sale_invoice.strip(),
-                            "Party_Name": party_name.strip(),
-                            "Sale_Price_Per_Unit": f"{float(sale_price):.2f}",
-                            "Total_Sale_Value": f"{float(sale_price) * int(qty_sold):.2f}",
-                            "Sale_Bill_Images": files_to_json(sale_bills),
-                        },
-                    )
-                    st.success("Sale recorded and stock updated.")
-                    st.rerun()
+                    for row in rows_scope:
+                        if remaining <= 0:
+                            break
+                        available = to_int(row.get("Quantity", "0"))
+                        take = min(available, remaining)
+                        if take <= 0:
+                            continue
+                        remaining -= take
+                        rows_to_update.append((row, available - take))
+
+                    if remaining > 0:
+                        st.error("Not enough stock in selected supplier scope.")
+                    else:
+                        for row, new_qty in rows_to_update:
+                            payload = {
+                                "Part_Name": row.get("Part_Name", "").strip(),
+                                "Part_Number": row.get("Part_Number", "").strip(),
+                                "Category": row.get("Category", "").strip(),
+                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
+                                "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
+                                "Supplier_Email": row.get("Supplier_Email", "").strip(),
+                                "Quantity": str(new_qty),
+                                "Reorder_Level": str(to_int(row.get("Reorder_Level", "0"))),
+                                "Unit_Purchase_Price": f"{to_float(row.get('Unit_Purchase_Price', '0')):.2f}",
+                                "Unit_Sale_Price": f"{to_float(row.get('Unit_Sale_Price', '0')):.2f}",
+                                "Purchase_Date": row.get("Purchase_Date", "").strip(),
+                                "Product_Image": row.get("Product_Image", ""),
+                                "Part_Documents": row.get("Part_Documents", ""),
+                            }
+                            update_record(parts_ws, row["_row"], PARTS_HEADERS, payload)
+
+                        append_record(
+                            sales_ws,
+                            SALES_RECORDS_HEADERS,
+                            {
+                                "Date": sale_date.isoformat(),
+                                "Part_Name": selected_part,
+                                "Category": selected_category,
+                                "Supplier": supplier_choice,
+                                "Quantity_Sold": str(int(qty_sold)),
+                                "Sale_Invoice_Number": sale_invoice.strip(),
+                                "Party_Name": party_name.strip(),
+                                "Sale_Price_Per_Unit": f"{float(sale_price):.2f}",
+                                "Total_Sale_Value": f"{float(sale_price) * int(qty_sold):.2f}",
+                                "Sale_Bill_Images": files_to_json(sale_bills),
+                            },
+                        )
+                        st.success("Sale recorded and stock updated.")
+                        st.rerun()
 
 st.markdown("---")
 st.subheader("Section B - Sales Records View")

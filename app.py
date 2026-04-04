@@ -20,7 +20,7 @@ from utils.constants import (
     PURCHASE_ORDERS_HEADERS,
     PURCHASE_ORDERS_TAB,
 )
-from utils.sheets_db import get_cached_records, get_or_create_worksheet
+from utils.sheets_db import get_cached_records_by_title, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 
@@ -101,10 +101,10 @@ contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADER
 payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
 pos_ws = get_or_create_worksheet(spreadsheet, PURCHASE_ORDERS_TAB, PURCHASE_ORDERS_HEADERS)
 
-parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
-contacts = get_cached_records(contacts_ws, contacts_ws.title, CONTACTS_HEADERS)
-payments = get_cached_records(payments_ws, payments_ws.title, PAYMENTS_HEADERS)
-pos = get_cached_records(pos_ws, pos_ws.title, PURCHASE_ORDERS_HEADERS)
+parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
+contacts = get_cached_records_by_title(contacts_ws.title, CONTACTS_HEADERS)
+payments = get_cached_records_by_title(payments_ws.title, PAYMENTS_HEADERS)
+pos = get_cached_records_by_title(pos_ws.title, PURCHASE_ORDERS_HEADERS)
 
 low_stock_parts = [
     part
@@ -178,7 +178,7 @@ with secondary_col:
 st.markdown("---")
 
 email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
-email_log = get_cached_records(email_log_ws, email_log_ws.title, EMAIL_LOG_HEADERS)
+email_log = get_cached_records_by_title(email_log_ws.title, EMAIL_LOG_HEADERS)
 
 if email_log:
     st.markdown("### 📧 Recent Email Activity")

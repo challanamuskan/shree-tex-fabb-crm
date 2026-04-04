@@ -6,7 +6,7 @@ import streamlit as st
 
 from utils.auth import require_login
 from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, RETURNS_HEADERS, RETURNS_TAB
-from utils.sheets_db import append_record, get_cached_records, get_or_create_worksheet, update_record
+from utils.sheets_db import append_record, get_cached_records_by_title, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -49,8 +49,8 @@ parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
 categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
-parts = get_cached_records(parts_ws, parts_ws.title, PARTS_HEADERS)
-categories = get_cached_records(categories_ws, categories_ws.title, CATEGORIES_HEADERS)
+parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
+categories = get_cached_records_by_title(categories_ws.title, CATEGORIES_HEADERS)
 category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
 if not category_names:
     category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
@@ -69,106 +69,28 @@ with sale_tab:
         sale_parts = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
         if not sale_parts:
             st.info("No parts found in the selected category.")
-            st.stop()
-        part_name = st.selectbox("Part Name", options=sale_parts, key="sale_return_part")
-        qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1)
-        return_date = st.date_input("Return Date", value=date.today(), key="sale_return_date")
-        party_name = st.text_input("Party Name")
-        reason = st.text_input("Reason for Return")
-        docs = st.file_uploader(
-            "Upload Return Document (optional)",
-            type=["jpg", "jpeg", "png", "pdf"],
-            accept_multiple_files=True,
-            key="sale_return_docs",
-        )
-
-        submit_sale_return = st.form_submit_button("Record Sale Return")
-        if submit_sale_return:
-            rows = [r for r in category_rows if r.get("Part_Name", "").strip() == part_name]
-            if not rows:
-                st.error("Part not found.")
-            else:
-                target = sorted(rows, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)[0]
-                new_qty = to_int(target.get("Quantity", "0")) + int(qty)
-                update_record(
-                    parts_ws,
-                    target["_row"],
-                    PARTS_HEADERS,
-                    {
-                        "Part_Name": target.get("Part_Name", "").strip(),
-                        "Part_Number": target.get("Part_Number", "").strip(),
-                        "Category": target.get("Category", "").strip(),
-                        "Supplier_Name": target.get("Supplier_Name", "").strip(),
-                        "Supplier_Phone": target.get("Supplier_Phone", "").strip(),
-                        "Supplier_Email": target.get("Supplier_Email", "").strip(),
-                        "Quantity": str(new_qty),
-                        "Reorder_Level": str(to_int(target.get("Reorder_Level", "0"))),
-                        "Unit_Purchase_Price": f"{to_float(target.get('Unit_Purchase_Price', '0')):.2f}",
-                        "Unit_Sale_Price": f"{to_float(target.get('Unit_Sale_Price', '0')):.2f}",
-                        "Purchase_Date": target.get("Purchase_Date", "").strip(),
-                        "Product_Image": target.get("Product_Image", ""),
-                        "Part_Documents": target.get("Part_Documents", ""),
-                    },
-                )
-
-                append_record(
-                    returns_ws,
-                    RETURNS_HEADERS,
-                    {
-                        "Date": return_date.isoformat(),
-                        "Type": "Sale Return",
-                        "Part_Name": target.get("Part_Name", "").strip(),
-                        "Category": sale_category,
-                        "Supplier_Name": target.get("Supplier_Name", "").strip(),
-                        "Quantity": str(int(qty)),
-                        "Invoice_Number": invoice_no.strip(),
-                        "Party_Supplier_Name": party_name.strip(),
-                        "Reason": reason.strip(),
-                        "Return_Documents": files_to_json(docs),
-                    },
-                )
-                st.success("Sale return recorded and stock increased.")
-                st.rerun()
-
-with purchase_tab:
-    with st.form("purchase_return_form", clear_on_submit=True):
-        invoice_no = st.text_input("Original Purchase Invoice Number")
-        purchase_category = st.selectbox("Category", options=category_names, key="purchase_return_category")
-        category_rows = [r for r in parts if (r.get("Category", "").strip() or "Uncategorised") == purchase_category]
-        part_names = sorted({r.get("Part_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip()})
-        if not part_names:
-            st.info("No parts found in the selected category.")
-            st.stop()
-        part_name = st.selectbox("Part Name", options=part_names, key="purchase_return_part")
-        suppliers_for_part = sorted({r.get("Supplier_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip()})
-        supplier_name = st.selectbox("Supplier Name", options=suppliers_for_part if suppliers_for_part else [""], key="purchase_return_supplier")
-        qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1, key="purchase_return_qty")
-        return_date = st.date_input("Return Date", value=date.today(), key="purchase_return_date")
-        reason = st.text_input("Reason for Return")
-        docs = st.file_uploader(
-            "Upload Return Document (optional)",
-            type=["jpg", "jpeg", "png", "pdf"],
-            accept_multiple_files=True,
-            key="purchase_return_docs",
-        )
-
-        submit_purchase_return = st.form_submit_button("Record Purchase Return")
-        if submit_purchase_return:
-            target = next(
-                (
-                    r
-                    for r in category_rows
-                    if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip() == supplier_name
-                ),
-                None,
+            st.form_submit_button("Record Sale Return", disabled=True)
+        else:
+            part_name = st.selectbox("Part Name", options=sale_parts, key="sale_return_part")
+            qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1)
+            return_date = st.date_input("Return Date", value=date.today(), key="sale_return_date")
+            party_name = st.text_input("Party Name")
+            reason = st.text_input("Reason for Return")
+            docs = st.file_uploader(
+                "Upload Return Document (optional)",
+                type=["jpg", "jpeg", "png", "pdf"],
+                accept_multiple_files=True,
+                key="sale_return_docs",
             )
-            if not target:
-                st.error("Matching Part + Supplier row not found.")
-            else:
-                current_qty = to_int(target.get("Quantity", "0"))
-                if int(qty) > current_qty:
-                    st.error(f"Quantity returned exceeds stock ({current_qty}).")
+
+            submit_sale_return = st.form_submit_button("Record Sale Return")
+            if submit_sale_return:
+                rows = [r for r in category_rows if r.get("Part_Name", "").strip() == part_name]
+                if not rows:
+                    st.error("Part not found.")
                 else:
+                    target = sorted(rows, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)[0]
+                    new_qty = to_int(target.get("Quantity", "0")) + int(qty)
                     update_record(
                         parts_ws,
                         target["_row"],
@@ -180,7 +102,7 @@ with purchase_tab:
                             "Supplier_Name": target.get("Supplier_Name", "").strip(),
                             "Supplier_Phone": target.get("Supplier_Phone", "").strip(),
                             "Supplier_Email": target.get("Supplier_Email", "").strip(),
-                            "Quantity": str(current_qty - int(qty)),
+                            "Quantity": str(new_qty),
                             "Reorder_Level": str(to_int(target.get("Reorder_Level", "0"))),
                             "Unit_Purchase_Price": f"{to_float(target.get('Unit_Purchase_Price', '0')):.2f}",
                             "Unit_Sale_Price": f"{to_float(target.get('Unit_Sale_Price', '0')):.2f}",
@@ -195,16 +117,96 @@ with purchase_tab:
                         RETURNS_HEADERS,
                         {
                             "Date": return_date.isoformat(),
-                            "Type": "Purchase Return",
+                            "Type": "Sale Return",
                             "Part_Name": target.get("Part_Name", "").strip(),
-                            "Category": purchase_category,
+                            "Category": sale_category,
                             "Supplier_Name": target.get("Supplier_Name", "").strip(),
                             "Quantity": str(int(qty)),
                             "Invoice_Number": invoice_no.strip(),
-                            "Party_Supplier_Name": supplier_name,
+                            "Party_Supplier_Name": party_name.strip(),
                             "Reason": reason.strip(),
                             "Return_Documents": files_to_json(docs),
                         },
                     )
-                    st.success("Purchase return recorded and stock decreased.")
+                    st.success("Sale return recorded and stock increased.")
                     st.rerun()
+
+with purchase_tab:
+    with st.form("purchase_return_form", clear_on_submit=True):
+        invoice_no = st.text_input("Original Purchase Invoice Number")
+        purchase_category = st.selectbox("Category", options=category_names, key="purchase_return_category")
+        category_rows = [r for r in parts if (r.get("Category", "").strip() or "Uncategorised") == purchase_category]
+        part_names = sorted({r.get("Part_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip()})
+        if not part_names:
+            st.info("No parts found in the selected category.")
+            st.form_submit_button("Record Purchase Return", disabled=True)
+        else:
+            part_name = st.selectbox("Part Name", options=part_names, key="purchase_return_part")
+            suppliers_for_part = sorted({r.get("Supplier_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip()})
+            supplier_name = st.selectbox("Supplier Name", options=suppliers_for_part if suppliers_for_part else [""], key="purchase_return_supplier")
+            qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1, key="purchase_return_qty")
+            return_date = st.date_input("Return Date", value=date.today(), key="purchase_return_date")
+            reason = st.text_input("Reason for Return")
+            docs = st.file_uploader(
+                "Upload Return Document (optional)",
+                type=["jpg", "jpeg", "png", "pdf"],
+                accept_multiple_files=True,
+                key="purchase_return_docs",
+            )
+
+            submit_purchase_return = st.form_submit_button("Record Purchase Return")
+            if submit_purchase_return:
+                target = next(
+                    (
+                        r
+                        for r in category_rows
+                        if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip() == supplier_name
+                    ),
+                    None,
+                )
+                if not target:
+                    st.error("Matching Part + Supplier row not found.")
+                else:
+                    current_qty = to_int(target.get("Quantity", "0"))
+                    if int(qty) > current_qty:
+                        st.error(f"Quantity returned exceeds stock ({current_qty}).")
+                    else:
+                        update_record(
+                            parts_ws,
+                            target["_row"],
+                            PARTS_HEADERS,
+                            {
+                                "Part_Name": target.get("Part_Name", "").strip(),
+                                "Part_Number": target.get("Part_Number", "").strip(),
+                                "Category": target.get("Category", "").strip(),
+                                "Supplier_Name": target.get("Supplier_Name", "").strip(),
+                                "Supplier_Phone": target.get("Supplier_Phone", "").strip(),
+                                "Supplier_Email": target.get("Supplier_Email", "").strip(),
+                                "Quantity": str(current_qty - int(qty)),
+                                "Reorder_Level": str(to_int(target.get("Reorder_Level", "0"))),
+                                "Unit_Purchase_Price": f"{to_float(target.get('Unit_Purchase_Price', '0')):.2f}",
+                                "Unit_Sale_Price": f"{to_float(target.get('Unit_Sale_Price', '0')):.2f}",
+                                "Purchase_Date": target.get("Purchase_Date", "").strip(),
+                                "Product_Image": target.get("Product_Image", ""),
+                                "Part_Documents": target.get("Part_Documents", ""),
+                            },
+                        )
+
+                        append_record(
+                            returns_ws,
+                            RETURNS_HEADERS,
+                            {
+                                "Date": return_date.isoformat(),
+                                "Type": "Purchase Return",
+                                "Part_Name": target.get("Part_Name", "").strip(),
+                                "Category": purchase_category,
+                                "Supplier_Name": target.get("Supplier_Name", "").strip(),
+                                "Quantity": str(int(qty)),
+                                "Invoice_Number": invoice_no.strip(),
+                                "Party_Supplier_Name": supplier_name,
+                                "Reason": reason.strip(),
+                                "Return_Documents": files_to_json(docs),
+                            },
+                        )
+                        st.success("Purchase return recorded and stock decreased.")
+                        st.rerun()
