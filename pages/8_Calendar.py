@@ -15,6 +15,11 @@ from utils.constants import (
     PAYMENTS_HEADERS,
     PAYMENTS_TAB,
 )
+from utils.email_alerts import (
+    get_low_stock_auto_alert_setting,
+    send_low_stock_email_alert,
+    set_low_stock_auto_alert_setting,
+)
 from utils.sheets_db import fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
@@ -224,3 +229,27 @@ if selected_events:
     st.dataframe(events_df[output_cols], use_container_width=True, hide_index=True)
 else:
     st.info("No events for this date.")
+
+st.markdown("---")
+st.subheader("Low Stock Alerts")
+
+if is_admin():
+    current_auto = get_low_stock_auto_alert_setting()
+    auto_enabled = st.toggle("Auto-send alerts on 1st and 15th of every month", value=current_auto)
+    if auto_enabled != current_auto:
+        if set_low_stock_auto_alert_setting(auto_enabled):
+            st.success("Auto-alert setting saved.")
+        else:
+            st.error("Could not save auto-alert setting.")
+
+    if st.button("📧 Send Low Stock Alert Now"):
+        ok, count, message = send_low_stock_email_alert()
+        if ok:
+            if count > 0:
+                st.success(f"Low stock alert email sent for {count} items.")
+            else:
+                st.info(message)
+        else:
+            st.error(f"Failed to send low stock alert email: {message}")
+else:
+    st.info("Admin access required to manage low stock email alerts.")

@@ -15,10 +15,14 @@ Complete CRM for Satyam Tex Fabb - 30-year-old textile machinery parts dealer in
 - 📊 MIS - Daily task assignment, employee attendance, performance dashboard
 - 🔐 Login - Role-based access (Admin/Employee) with password management
 - ⚡ **Performance Optimized** — Implemented intelligent data caching to prevent Google Sheets API rate limits and ensure fast load times.
+- ⚡ Performance — shared 5-minute data cache across all pages, lazy image loading
 - 🛠️ **Admin Controls** — Secure edit and delete capabilities for Categories and Parts.
 - 📤 Export/Import - Excel, CSV, PDF export; Tally import support
+- 📥 Bulk Import — chunked 400-row batch import with progress bar, supports XLS/XLSX/CSV
 - 🔍 OCR Bill Scanning - Upload a photo of a bill, data auto-fills form fields
-- ⚠️ Low Stock Alerts - Real-time reorder notifications when stock hits threshold
+- 📧 Low Stock Alerts — automated email alerts on 1st and 15th of each month
+- 🔍 Stock Search — instant search and filter by category across 2000+ parts
+- 🖼️ Part Images — upload product images directly from the CRM admin panel
 - 💰 Price History - Full supplier price history tracked forever, update anytime
 
 ## Live link
@@ -42,4 +46,5 @@ Complete CRM for Satyam Tex Fabb - 30-year-old textile machinery parts dealer in
 2. Create and activate a virtual environment.
 3. Install dependencies with pip install -r requirements.txt.
 4. Add your Google service account JSON and Gmail credentials in the project root.
-5. Run streamlit run app.py.
+5. Set admin_email in .streamlit/secrets.toml (required for low stock alert emails).
+6. Run streamlit run app.py.

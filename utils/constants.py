@@ -12,6 +12,7 @@ EMPLOYEES_TAB = "Employees"
 EMPLOYEE_TASKS_TAB = "Employee_Tasks"
 DAILY_REPORTS_TAB = "Daily_Reports"
 ATTENDANCE_TAB = "Attendance"
+SETTINGS_TAB = "Settings"
 
 PARTS_HEADERS = [
     "Part_Name",
@@ -160,4 +161,10 @@ ATTENDANCE_HEADERS = [
     "Time Out",
     "Total Hours",
     "Status",
+]
+
+SETTINGS_HEADERS = [
+    "key",
+    "value",
+    "updated_at",
 ]

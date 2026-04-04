@@ -1,7 +1,9 @@
 import io
 import csv
+import time
 from datetime import date
 
+from gspread.exceptions import APIError
 import pandas as pd
 import streamlit as st
 from openpyxl import Workbook
@@ -25,7 +27,7 @@ from utils.constants import (
     SALES_RECORDS_HEADERS,
     SALES_RECORDS_TAB,
 )
-from utils.sheets_db import bulk_append_records, fetch_sheet_data_by_name, get_or_create_worksheet
+from utils.sheets_db import bulk_append_records, fetch_sheet_data_by_name, fetch_tab, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -216,13 +218,8 @@ if st.button("Generate Export File"):
         else:
             all_sheets = {}
             for ws in spreadsheet.worksheets():
-                values = ws.get_all_values()
-                if not values:
-                    all_sheets[ws.title] = pd.DataFrame()
-                    continue
-                headers = values[0]
-                rows = values[1:]
-                all_sheets[ws.title] = pd.DataFrame(rows, columns=headers)
+                records = fetch_tab(ws.title)
+                all_sheets[ws.title] = pd.DataFrame(records)
 
             st.session_state["export_blob"] = make_excel(all_sheets)
             st.session_state["export_filename"] = f"Satyam_Tex_Fabb_Backup_{date.today().isoformat()}.xlsx"
@@ -240,72 +237,113 @@ st.subheader("Section B - Import Data")
 if not is_admin():
     st.info("Import is available for admin users only.")
 else:
-    upload = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"], key="import_file")
+    upload = st.file_uploader("Upload file", type=["xlsx", "xls", "csv", "pdf"], key="import_file")
 
     target_sheet_options = {
-        "Restore Full Backup (All Sheets)": None,
-        "Parts": (PARTS_TAB, PARTS_HEADERS),
+        "Parts (Stock)": (PARTS_TAB, PARTS_HEADERS),
         "Customers": (CONTACTS_TAB, CONTACTS_HEADERS),
-        "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
-        "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
         "Sales_Records": (SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
+        "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
+        "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
     }
     target_name = st.selectbox("Import into", options=list(target_sheet_options.keys()), index=0)
 
     if upload is not None:
-        if st.button("Import Data"):
-            if target_name == "Restore Full Backup (All Sheets)":
-                if not upload.name.lower().endswith(".xlsx"):
-                    st.error("Please upload an Excel backup file (.xlsx) for full restore.")
-                else:
-                    all_sheets = pd.read_excel(upload, sheet_name=None)
-                    restore_mapping = {
-                        "Categories": (CATEGORIES_TAB, CATEGORIES_HEADERS),
-                        "Parts": (PARTS_TAB, PARTS_HEADERS),
-                        "Sales_Records": (SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
-                        "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
-                        "Returns": (RETURNS_TAB, RETURNS_HEADERS),
-                        "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
-                    }
-                    restored_sheets = 0
-                    restore_spreadsheet = get_spreadsheet_connection()
+        file_name = upload.name.lower()
+        if file_name.endswith(".pdf"):
+            st.warning("PDF import is not supported for data tables. Please convert to Excel first.")
+            st.stop()
 
-                    with st.spinner("Bulk restoring backup to Google Sheets..."):
-                        for sheet_name, sheet_df in all_sheets.items():
-                            if sheet_name not in restore_mapping:
-                                continue
+        if file_name.endswith(".xls"):
+            input_df = pd.read_excel(upload, engine="xlrd")
+        elif file_name.endswith(".xlsx"):
+            input_df = pd.read_excel(upload, engine="openpyxl")
+        elif file_name.endswith(".csv"):
+            input_df = pd.read_csv(upload)
+        else:
+            st.error("Unsupported file format.")
+            st.stop()
 
-                            target_tab, target_headers = restore_mapping[sheet_name]
-                            target_ws = get_or_create_worksheet(restore_spreadsheet, target_tab, target_headers)
+        if target_name == "Parts (Stock)":
+            st.markdown("### 📥 Import Stock from Legacy Excel")
+            column_map = {
+                "Part_Name": "Part_Name",
+                "Category": "Category",
+                "Unit_Sale_Price": "Unit_Sale_Price",
+                "Quantity": "Quantity",
+                "Supplier_Name": "Supplier_Name",
+                "status": "status",
+                "balancedate": "Date_Added",
+                "id": "Legacy_ID",
+                "pricetype": "Price_Type",
+                "boxnumber": "Box_Number",
+                "cid": "cid",
+            }
 
-                            working_df = sheet_df.copy()
-                            for header in target_headers:
-                                if header not in working_df.columns:
-                                    working_df[header] = ""
-                            ordered_df = working_df[target_headers]
-                            ordered_df = ordered_df.fillna("")
-                            ordered_df = ordered_df.astype(str)  # THIS FIXES THE JSON CRASH
-                            list_of_rows = ordered_df.values.tolist()
+            legacy_df = input_df.drop(columns=["image", "rts"], errors="ignore").copy()
+            mapped_df = pd.DataFrame()
+            for src_col, out_col in column_map.items():
+                if src_col in legacy_df.columns:
+                    mapped_df[out_col] = legacy_df[src_col]
 
-                            if not list_of_rows:
-                                continue
+            if "Unit_Sale_Price" in mapped_df.columns:
+                mapped_df["Unit_Sale_Price"] = mapped_df["Unit_Sale_Price"].apply(
+                    lambda value: str(value).split("/")[-1].strip() if str(value).strip() else ""
+                )
 
-                            success = bulk_append_records(target_ws, list_of_rows)
-                            if success:
-                                restored_sheets += 1
+            for header in PARTS_HEADERS:
+                if header not in mapped_df.columns:
+                    mapped_df[header] = ""
 
-                    if restored_sheets > 0:
-                        st.success(f"✅ Successfully restored data across {restored_sheets} sheets!")
-                        st.cache_data.clear()
+            ordered_df = mapped_df[PARTS_HEADERS]
+
+            st.success(f"File loaded: {len(ordered_df)} rows, {len(ordered_df.columns)} columns detected")
+            st.dataframe(ordered_df.head(5), use_container_width=True, hide_index=True)
+            st.metric("Total rows to import", len(ordered_df))
+
+            if st.button(f"⬆️ Import All {len(ordered_df)} Rows to Parts Sheet", use_container_width=True):
+                target_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+                chunk_size = 400
+                total_rows = len(ordered_df)
+                imported_rows = 0
+                batches = (total_rows + chunk_size - 1) // chunk_size if total_rows else 0
+                progress_bar = st.progress(0.0)
+
+                try:
+                    with st.status("Importing parts in batches...", expanded=True) as status:
+                        for batch_index in range(batches):
+                            start = batch_index * chunk_size
+                            end = min(start + chunk_size, total_rows)
+                            df_chunk = ordered_df.iloc[start:end].fillna("").astype(str)
+                            rows = df_chunk.values.tolist()
+                            if rows:
+                                target_ws.append_rows(rows, value_input_option="USER_ENTERED")
+                                imported_rows += len(rows)
+
+                            progress_bar.progress(imported_rows / total_rows if total_rows else 1.0)
+                            status.write(f"Batch {batch_index + 1}/{batches} imported ({imported_rows}/{total_rows} rows)")
+                            time.sleep(2)
+
+                        status.update(label="Import completed", state="complete")
+
+                    st.cache_data.clear()
+                    st.success(f"✅ Successfully imported {total_rows} rows across {batches} batches!")
+                except APIError as exc:
+                    progress_bar.progress(imported_rows / total_rows if total_rows else 0.0)
+                    if "429" in str(exc):
+                        st.error(
+                            "Google Sheets rate limit hit. Wait 2 minutes and click Import again. Your data is safe — "
+                            "it will resume from where it left off if you re-upload the same file and skip already-imported rows."
+                        )
                     else:
-                        st.warning("No matching backup sheets were found to restore.")
+                        st.error(f"Import failed: {exc}")
+                    st.warning(f"Rows successfully imported before error: {imported_rows}")
+                except Exception as exc:
+                    progress_bar.progress(imported_rows / total_rows if total_rows else 0.0)
+                    st.error(f"Import failed: {exc}")
+                    st.warning(f"Rows successfully imported before error: {imported_rows}")
             else:
                 target_tab, target_headers = target_sheet_options[target_name]
-                if upload.name.lower().endswith(".csv"):
-                    input_df = pd.read_csv(upload)
-                else:
-                    input_df = pd.read_excel(upload)
-
                 working_df = input_df.copy()
                 for header in target_headers:
                     if header not in working_df.columns:
@@ -317,12 +355,13 @@ else:
                 list_of_rows = ordered_df.values.tolist()
                 target_ws = get_or_create_worksheet(spreadsheet, target_tab, target_headers)
 
-                with st.spinner("Bulk uploading data to Google Sheets..."):
-                    success = bulk_append_records(target_ws, list_of_rows)
+                if st.button("Import Data", use_container_width=True):
+                    with st.spinner("Bulk uploading data to Google Sheets..."):
+                        success = bulk_append_records(target_ws, list_of_rows)
 
-                if success:
-                    st.success(f"✅ Successfully imported {len(list_of_rows)} records in bulk!")
-                    st.cache_data.clear()
+                    if success:
+                        st.success(f"✅ Successfully imported {len(list_of_rows)} records in bulk!")
+                        st.cache_data.clear()
 
 st.markdown("---")
 st.subheader("Section C - Tally Export Guide")
