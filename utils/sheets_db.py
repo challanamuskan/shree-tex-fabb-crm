@@ -105,10 +105,31 @@ def read_records(worksheet, headers):
     return rows
 
 
-@st.cache_data(ttl=60)
-def get_cached_records(_worksheet, worksheet_key, headers):
-    del worksheet_key  # Included only to ensure cache entries differ per worksheet.
-    return read_records(_worksheet, headers)
+@st.cache_data(ttl=120)
+def get_cached_records_by_title(worksheet_title, headers):
+    from utils.ui import get_spreadsheet_connection
+
+    try:
+        sh = get_spreadsheet_connection()
+        if sh is None:
+            return []
+        ws = sh.worksheet(worksheet_title)
+        values = ws.get_all_values()
+        if not values:
+            return []
+
+        sheet_headers = values[0]
+        indexes = [sheet_headers.index(h) if h in sheet_headers else None for h in headers]
+        rows = []
+        for row_number, row in enumerate(values[1:], start=2):
+            record = {}
+            for idx, header in zip(indexes, headers):
+                record[header] = row[idx].strip() if idx is not None and idx < len(row) else ""
+            record["_row"] = row_number
+            rows.append(record)
+        return rows
+    except Exception:
+        return []
 
 
 def append_record(worksheet, headers, payload):

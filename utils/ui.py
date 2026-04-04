@@ -79,9 +79,8 @@ def init_page(title):
 
 
 def check_admin_access():
-    if "is_admin" not in st.session_state:
-        st.session_state["is_admin"] = False
-    return st.session_state["is_admin"]
+    import streamlit as st
+    return st.session_state.get("role") == "Admin" or st.session_state.get("is_admin") == True
 
 
 def admin_login_widget():
@@ -103,6 +102,10 @@ def admin_login_widget():
 
 
 def get_spreadsheet_connection():
+    existing_spreadsheet = st.session_state.get("spreadsheet_obj")
+    if existing_spreadsheet is not None:
+        return existing_spreadsheet
+
     saved_id = load_sheet_id()
     with st.sidebar:
         st.markdown("---")
@@ -114,6 +117,7 @@ def get_spreadsheet_connection():
                     client = gspread.authorize(creds)
                     spreadsheet = client.open_by_key(sheet_id)
                     save_sheet_id(sheet_id)
+                    st.session_state["spreadsheet_obj"] = spreadsheet
                     st.sidebar.success("✅ Connected")
                     return spreadsheet
                 except Exception as e:
