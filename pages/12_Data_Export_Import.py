@@ -267,8 +267,9 @@ else:
         if target_name == "Parts (Stock)":
             st.markdown("### 📥 Import Stock from Legacy Excel")
             column_map = {
-                "Part_Name": "Part_Name",
+                "cid": "cid",
                 "Category": "Category",
+                "Part_Name": "Part_Name",
                 "Unit_Sale_Price": "Unit_Sale_Price",
                 "Quantity": "Quantity",
                 "Supplier_Name": "Supplier_Name",
@@ -277,7 +278,6 @@ else:
                 "id": "Legacy_ID",
                 "pricetype": "Price_Type",
                 "boxnumber": "Box_Number",
-                "cid": "cid",
             }
 
             legacy_df = input_df.drop(columns=["image", "rts"], errors="ignore").copy()
@@ -285,6 +285,9 @@ else:
             for src_col, out_col in column_map.items():
                 if src_col in legacy_df.columns:
                     mapped_df[out_col] = legacy_df[src_col]
+
+            if "image" in legacy_df.columns:
+                mapped_df["image"] = legacy_df["image"]
 
             if "Unit_Sale_Price" in mapped_df.columns:
                 mapped_df["Unit_Sale_Price"] = mapped_df["Unit_Sale_Price"].apply(
@@ -296,6 +299,7 @@ else:
                     mapped_df[header] = ""
 
             ordered_df = mapped_df[PARTS_HEADERS]
+            ordered_df = ordered_df.fillna("").astype(str)
 
             st.success(f"File loaded: {len(ordered_df)} rows, {len(ordered_df.columns)} columns detected")
             st.dataframe(ordered_df.head(5), use_container_width=True, hide_index=True)
@@ -314,7 +318,7 @@ else:
                         for batch_index in range(batches):
                             start = batch_index * chunk_size
                             end = min(start + chunk_size, total_rows)
-                            df_chunk = ordered_df.iloc[start:end].fillna("").astype(str)
+                            df_chunk = ordered_df.iloc[start:end]
                             rows = df_chunk.values.tolist()
                             if rows:
                                 target_ws.append_rows(rows, value_input_option="USER_ENTERED")

@@ -24,6 +24,7 @@ from utils.file_handler import base64_to_image, image_to_base64
 from utils.sheets_db import (
     append_record,
     delete_record,
+    fetch_tab,
     fetch_sheet_data_by_name,
     get_or_create_worksheet,
     update_record,
@@ -90,82 +91,39 @@ purchase_records = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECOR
 returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
 
 st.subheader("Current Stock")
-category_values = sorted({(p.get("Category", "").strip() or "Uncategorised") for p in parts})
-search_col, filter_col = st.columns([3, 2])
-with search_col:
-    search_query = st.text_input("🔍 Search part or category", key="stock_search_query").strip().lower()
-with filter_col:
-    selected_category_filter = st.selectbox("Filter by Category", ["All"] + category_values, key="stock_category_filter")
+try:
+    parts_tab_records = fetch_tab("Parts")
+except Exception:
+    parts_tab_records = fetch_tab(PARTS_TAB)
 
-filtered_parts = []
-for part in parts:
-    category_name = part.get("Category", "").strip() or "Uncategorised"
-    part_name = part.get("Part_Name", "").strip()
+df = pd.DataFrame(parts_tab_records)
+if df.empty:
+    df = pd.DataFrame(columns=PARTS_HEADERS)
 
-    if selected_category_filter != "All" and category_name != selected_category_filter:
-        continue
+if "Category" not in df.columns:
+    df["Category"] = ""
+if "Quantity" not in df.columns:
+    df["Quantity"] = ""
 
-    if search_query and search_query not in part_name.lower() and search_query not in category_name.lower():
-        continue
+df["Category"] = df["Category"].astype(str).replace(["", "nan", "None", "NaN"], "⚠️ Uncategorised")
 
-    filtered_parts.append(part)
+categories_list = sorted(df["Category"].unique().tolist()) if not df.empty else []
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Categories", len(categories_list))
+col2.metric("Total Parts", len(df))
+col3.metric("Total Stock Units", df["Quantity"].apply(lambda x: int(x) if str(x).isdigit() else 0).sum())
 
-summary_categories = len({(p.get("Category", "").strip() or "Uncategorised") for p in filtered_parts})
-summary_parts = len({p.get("Part_Name", "").strip() for p in filtered_parts if p.get("Part_Name", "").strip()})
-summary_stock_units = sum(to_int(p.get("Quantity", 0)) for p in filtered_parts)
-st.caption(f"Total Categories: {summary_categories} | Total Parts: {summary_parts} | Total Stock Units: {summary_stock_units}")
-
-if not filtered_parts:
-    st.info("No matching parts found.")
-elif search_query:
-    flat_df = pd.DataFrame(
-        [
-            {
-                "Category": p.get("Category", "").strip() or "Uncategorised",
-                "Part_Name": p.get("Part_Name", "").strip(),
-                "Quantity": to_int(p.get("Quantity", 0)),
-                "Unit_Sale_Price": to_float(p.get("Unit_Sale_Price", 0)),
-                "Supplier_Name": p.get("Supplier_Name", "").strip(),
-            }
-            for p in filtered_parts
-        ]
-    )
-    st.dataframe(flat_df, use_container_width=True, hide_index=True)
-else:
-    grouped_by_category = {}
-    for p in filtered_parts:
-        category_name = p.get("Category", "").strip() or "Uncategorised"
-        grouped_by_category.setdefault(category_name, []).append(p)
-
-    for category_name in sorted(grouped_by_category.keys()):
-        category_parts = grouped_by_category[category_name]
-        with st.expander(category_name, expanded=False):
-            compact_df = pd.DataFrame(
-                [
-                    {
-                        "Part_Name": p.get("Part_Name", "").strip(),
-                        "Quantity": to_int(p.get("Quantity", 0)),
-                        "Unit_Sale_Price": to_float(p.get("Unit_Sale_Price", 0)),
-                        "Supplier_Name": p.get("Supplier_Name", "").strip(),
-                    }
-                    for p in category_parts
-                ]
-            )
-            st.dataframe(compact_df, use_container_width=True, hide_index=True)
-
-            unique_parts = sorted({p.get("Part_Name", "").strip() for p in category_parts if p.get("Part_Name", "").strip()})
-            for part_name in unique_parts:
-                part_rows = [p for p in category_parts if p.get("Part_Name", "").strip() == part_name]
-                with st.expander(f"{part_name} image", expanded=False):
-                    first_image = next((extract_image_payload(r.get("Product_Image", "")) for r in part_rows if str(r.get("Product_Image", "")).strip()), "")
-                    if first_image:
-                        image_obj = base64_to_image(first_image)
-                        if image_obj is not None:
-                            st.image(image_obj, width=180)
-                        else:
-                            st.caption("No image")
-                    else:
-                        st.caption("No image")
+for cat in categories_list:
+    cat_parts = df[df["Category"] == cat].copy()
+    for col in ["Part_Name", "Quantity", "Unit_Sale_Price", "Supplier_Name"]:
+        if col not in cat_parts.columns:
+            cat_parts[col] = ""
+    with st.expander(f"{cat} ({len(cat_parts)} parts)", expanded=False):
+        st.dataframe(
+            cat_parts[["Part_Name", "Quantity", "Unit_Sale_Price", "Supplier_Name"]],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 st.subheader("Section A - Category Manager")
 if categories:
@@ -258,19 +216,18 @@ else:
                 )
 
                 payload = {
-                    "Part_Name": part_name.strip(),
-                    "Part_Number": part_number.strip(),
+                    "cid": "",
                     "Category": form_category,
-                    "Supplier_Name": supplier_name.strip(),
-                    "Supplier_Phone": supplier_phone.strip(),
-                    "Supplier_Email": supplier_email.strip(),
-                    "Quantity": str(int(quantity)),
-                    "Reorder_Level": "0",
-                    "Unit_Purchase_Price": f"{float(unit_purchase_price):.2f}",
+                    "Part_Name": part_name.strip(),
                     "Unit_Sale_Price": f"{float(unit_sale_price):.2f}",
-                    "Purchase_Date": purchase_date.isoformat(),
-                    "Product_Image": image_b64,
-                    "Part_Documents": docs_json,
+                    "Quantity": str(int(quantity)),
+                    "status": "",
+                    "Date_Added": purchase_date.isoformat(),
+                    "Legacy_ID": "",
+                    "Price_Type": "",
+                    "Box_Number": "",
+                    "Supplier_Name": supplier_name.strip(),
+                    "image": image_b64,
                 }
 
                 if existing_row:
@@ -448,6 +405,46 @@ st.markdown("---")
 st.subheader("🛠️ Admin Controls (Edit / Delete)")
 
 if check_admin_access():
+    st.markdown("### 🔧 Fix Uncategorised Parts")
+    uncategorised_rows = [
+        r
+        for r in parts
+        if str(r.get("Category", "")).strip() in {"", "nan", "None", "NaN"}
+    ]
+    assignable_categories = [r.get("Category_Name", "").strip() for r in categories if r.get("Category_Name", "").strip()]
+
+    if st.button("🔧 Fix Uncategorised Parts", key="fix_uncategorised_btn"):
+        st.session_state["show_uncategorised_fix"] = True
+
+    if st.session_state.get("show_uncategorised_fix", False):
+        if not uncategorised_rows:
+            st.success("No uncategorised parts found.")
+        elif not assignable_categories:
+            st.warning("No categories available. Add categories first.")
+        else:
+            with st.form("fix_uncategorised_form"):
+                assignments = {}
+                for row in uncategorised_rows:
+                    row_id = row.get("_row")
+                    label = f"{row.get('Part_Name', 'Unnamed')} | Supplier: {row.get('Supplier_Name', '')} | Qty: {row.get('Quantity', '')}"
+                    assignments[row_id] = st.selectbox(
+                        label,
+                        options=assignable_categories,
+                        key=f"assign_category_{row_id}",
+                    )
+
+                if st.form_submit_button("Save Category Assignments"):
+                    updated = 0
+                    for row in uncategorised_rows:
+                        row_id = row.get("_row")
+                        payload = {header: str(row.get(header, "") or "") for header in PARTS_HEADERS}
+                        payload["Category"] = assignments.get(row_id, payload.get("Category", ""))
+                        update_record(parts_ws, row_id, PARTS_HEADERS, payload)
+                        updated += 1
+                    st.success(f"Updated category for {updated} parts.")
+                    st.session_state["show_uncategorised_fix"] = False
+                    st.rerun()
+
     st.markdown("### Edit / Delete Category")
     category_map = {
         r.get("Category_Name", "").strip(): r
@@ -544,18 +541,17 @@ if check_admin_access():
                             PARTS_HEADERS,
                             {
                                 "Part_Name": row.get("Part_Name", "").strip(),
-                                "Part_Number": row.get("Part_Number", "").strip(),
+                                "cid": row.get("cid", "").strip(),
                                 "Category": row.get("Category", "").strip(),
-                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
-                                "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
-                                "Supplier_Email": row.get("Supplier_Email", "").strip(),
-                                "Quantity": str(to_int(row.get("Quantity", "0"))),
-                                "Reorder_Level": row.get("Reorder_Level", "").strip(),
-                                "Unit_Purchase_Price": f"{float(edit_purchase_price):.2f}",
                                 "Unit_Sale_Price": f"{float(edit_sale_price):.2f}",
-                                "Purchase_Date": row.get("Purchase_Date", "").strip(),
-                                "Product_Image": updated_image_b64 if updated_image_b64 else row.get("Product_Image", ""),
-                                "Part_Documents": row.get("Part_Documents", ""),
+                                "Quantity": str(to_int(row.get("Quantity", "0"))),
+                                "status": row.get("status", "").strip(),
+                                "Date_Added": row.get("Date_Added", "").strip(),
+                                "Legacy_ID": row.get("Legacy_ID", "").strip(),
+                                "Price_Type": row.get("Price_Type", "").strip(),
+                                "Box_Number": row.get("Box_Number", "").strip(),
+                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
+                                "image": updated_image_b64 if updated_image_b64 else row.get("image", ""),
                             },
                         )
                     st.success("Part details updated for all supplier rows.")

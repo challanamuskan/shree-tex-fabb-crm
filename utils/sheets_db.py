@@ -148,7 +148,13 @@ def fetch_tab(tab_name):
     from utils.ui import get_spreadsheet_connection
 
     sh = get_spreadsheet_connection()
-    ws = sh.worksheet(tab_name)
+    try:
+        ws = sh.worksheet(tab_name)
+    except gspread.WorksheetNotFound:
+        if tab_name == "Parts":
+            ws = sh.worksheet("Stock Manager")
+        else:
+            raise
     return ws.get_all_records()
 
 
