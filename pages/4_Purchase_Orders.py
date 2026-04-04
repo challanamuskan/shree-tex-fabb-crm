@@ -3,22 +3,24 @@ from datetime import date, datetime
 import pandas as pd
 import streamlit as st
 
-from utils.auth import require_login, is_admin
-require_login()
-
-from utils.constants import PURCHASE_ORDERS_HEADERS, PURCHASE_ORDERS_TAB
-from utils.sheets_db import (
-    append_record,
-    delete_record,
-    get_or_create_worksheet,
-    read_records,
-    update_record,
+from utils.auth import is_admin, require_login
+from utils.constants import (
+    CONTACTS_HEADERS,
+    CONTACTS_TAB,
+    PARTS_HEADERS,
+    PARTS_TAB,
+    PURCHASE_ORDERS_HEADERS,
+    PURCHASE_ORDERS_TAB,
 )
 from utils.file_handler import upload_and_scan_widget
-from utils.ui import (
-    get_spreadsheet_connection,
-    init_page,
-)
+from utils.gmail_sender import get_gmail_service, send_email
+from utils.sheets_db import append_record, delete_record, get_or_create_worksheet, read_records, update_record
+from utils.ui import get_spreadsheet_connection, init_page
+from utils.whatsapp_sender import generate_whatsapp_link
+
+require_login()
+init_page("Purchase Orders")
+st.title("Purchase Orders")
 
 STATUS_OPTIONS = ["Ordered", "In Transit", "Delivered", "Cancelled"]
 
@@ -44,59 +46,54 @@ def parse_date(value):
         return date.today()
 
 
-def parse_scanned_date(value):
-    value_str = str(value).strip()
-    if not value_str:
-        return date.today()
+def build_po_email(po_number, delivery_date, items, total_amount):
+    subject = f"Purchase Order — {po_number} | Satyam Tex Fabb"
+    lines = []
+    lines.append("Dear Sir/Madam,")
+    lines.append("")
+    lines.append(f"Please process Purchase Order {po_number} with the following line items:")
+    lines.append("")
+    for item in items:
+        lines.append(
+            f"- {item.get('Part Name', '')}: Qty {item.get('Quantity Ordered', '')}, Unit ₹{item.get('Unit Price', '')}, Line ₹{item.get('Line Total', '')}"
+        )
+    lines.append("")
+    lines.append(f"Total Order Value: ₹{total_amount}")
+    lines.append(f"Expected Delivery Date: {delivery_date}")
+    lines.append("")
+    lines.append("Kindly confirm receipt and dispatch timeline.")
+    lines.append("")
+    lines.append("Regards,")
+    lines.append("Satyam Tex Fabb")
+    return subject, "\n".join(lines)
 
-    date_formats = [
-        "%Y-%m-%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%d-%m-%y",
-        "%d/%m/%y",
-        "%d %b %Y",
-        "%d %B %Y",
-        "%d %b %y",
-    ]
-    for fmt in date_formats:
-        try:
-            return datetime.strptime(value_str, fmt).date()
-        except ValueError:
-            continue
-    return date.today()
 
+def build_po_whatsapp(name, po_number, delivery_date, items, total_amount):
+    lines = [f"Dear {name}, Purchase Order {po_number} from Satyam Tex Fabb:"]
+    for item in items:
+        lines.append(f"- {item.get('Part Name', '')}: {item.get('Quantity Ordered', '')} qty")
+    lines.append(f"Total: ₹{total_amount}")
+    lines.append(f"Expected Delivery: {delivery_date}")
+    lines.append("Please confirm receipt.")
+    return "\n".join(lines)
 
-init_page("Purchase Orders")
-st.title("Purchase Orders")
 
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
 
 worksheet = get_or_create_worksheet(spreadsheet, PURCHASE_ORDERS_TAB, PURCHASE_ORDERS_HEADERS)
+parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
+
 records = read_records(worksheet, PURCHASE_ORDERS_HEADERS)
+parts_records = read_records(parts_ws, PARTS_HEADERS)
+contact_records = read_records(contacts_ws, CONTACTS_HEADERS)
 
 st.subheader("Orders")
 if records:
     df = pd.DataFrame(records).drop(columns=["_row", "Invoice_Document"], errors="ignore")
-    display_cols = [
-        c
-        for c in [
-            "Supplier",
-            "Invoice Number",
-            "Part Name",
-            "Quantity Ordered",
-            "Unit Price",
-            "Line Total",
-            "Total Order Value",
-            "Order Date",
-            "Expected Delivery",
-            "Status",
-        ]
-        if c in df.columns
-    ]
-    st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.info("No purchase orders found.")
 
@@ -106,20 +103,13 @@ if "po_product_count" not in st.session_state:
     st.session_state["po_product_count"] = 1
 
 bill_b64, scan_data = upload_and_scan_widget("Supplier Invoice", "po_invoice")
-scanned_order_date = parse_scanned_date(scan_data.get("date", ""))
-scanned_qty = max(1, to_int(scan_data.get("quantity", "1")))
-
 header_c1, header_c2 = st.columns(2)
 with header_c1:
     supplier = st.text_input("Supplier Name", value=scan_data.get("party_name", ""), key="po_supplier")
-    invoice_number = st.text_input("Invoice Number", value=scan_data.get("invoice_number", ""), key="po_invoice_number")
+    invoice_number = st.text_input("PO Number", value=scan_data.get("invoice_number", ""), key="po_invoice_number")
 with header_c2:
-    order_date = st.date_input("Order Date", value=scanned_order_date, key="po_order_date")
-    expected_delivery = st.date_input(
-        "Expected Delivery",
-        value=date.today(),
-        key="po_expected_delivery",
-    )
+    order_date = st.date_input("Order Date", value=date.today(), key="po_order_date")
+    expected_delivery = st.date_input("Expected Delivery", value=date.today(), key="po_expected_delivery")
 
 status = st.selectbox("Status", STATUS_OPTIONS, key="po_status")
 
@@ -128,147 +118,202 @@ if st.button("Add Another Product"):
 
 product_rows = []
 for idx in range(st.session_state["po_product_count"]):
-    st.markdown(f"**Product {idx + 1}**")
+    st.markdown(f"Product {idx + 1}")
     p1, p2, p3 = st.columns([2, 1, 1])
     with p1:
         p_name = st.text_input("Part Name", key=f"po_part_name_{idx}")
     with p2:
-        p_qty = st.number_input("Quantity", min_value=1, step=1, value=scanned_qty, key=f"po_qty_{idx}")
+        p_qty = st.number_input("Quantity", min_value=1, step=1, value=1, key=f"po_qty_{idx}")
     with p3:
-        p_unit_price = st.number_input(
-            "Unit Price",
-            min_value=0.0,
-            step=0.01,
-            format="%.2f",
-            key=f"po_unit_price_{idx}",
-        )
+        p_unit_price = st.number_input("Unit Price", min_value=0.0, step=0.01, format="%.2f", key=f"po_unit_price_{idx}")
     line_total = int(p_qty) * float(p_unit_price)
-    st.caption(f"Line Total: Rs {line_total:,.2f}")
+    st.caption(f"Line Total: ₹{line_total:,.2f}")
     product_rows.append(
         {
             "Part Name": p_name.strip(),
             "Quantity Ordered": int(p_qty),
-            "Unit Price": float(p_unit_price),
-            "Line Total": line_total,
+            "Unit Price": f"{float(p_unit_price):.2f}",
+            "Line Total": f"{line_total:.2f}",
         }
     )
 
 valid_products = [p for p in product_rows if p["Part Name"]]
-total_order_value = sum(p["Line Total"] for p in valid_products)
+total_order_value = sum(to_float(p["Line Total"]) for p in valid_products)
 
-st.markdown("**Order Summary**")
-summary_df = pd.DataFrame(valid_products)
-if not summary_df.empty:
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
-else:
-    st.info("Add at least one product name to build order summary.")
-st.markdown(f"**Total Order Value: Rs {total_order_value:,.2f}**")
+if valid_products:
+    st.dataframe(pd.DataFrame(valid_products), use_container_width=True, hide_index=True)
+st.markdown(f"Total Order Value: ₹{total_order_value:,.2f}")
 
 if st.button("Create Order"):
-    if not supplier.strip() or not invoice_number.strip():
-        st.error("Supplier Name and Invoice Number are required.")
-    elif not valid_products:
-        st.error("Add at least one valid product row.")
+    if not supplier.strip() or not invoice_number.strip() or not valid_products:
+        st.error("Supplier, PO Number and at least one product are required.")
     else:
-        try:
-            for item in valid_products:
-                payload = {
+        for item in valid_products:
+            append_record(
+                worksheet,
+                PURCHASE_ORDERS_HEADERS,
+                {
                     "Supplier": supplier.strip(),
                     "Invoice Number": invoice_number.strip(),
                     "Part Name": item["Part Name"],
                     "Quantity Ordered": str(item["Quantity Ordered"]),
-                    "Unit Price": f"{item['Unit Price']:.2f}",
-                    "Line Total": f"{item['Line Total']:.2f}",
+                    "Unit Price": item["Unit Price"],
+                    "Line Total": item["Line Total"],
                     "Total Order Value": f"{total_order_value:.2f}",
                     "Order Date": order_date.isoformat(),
                     "Expected Delivery": expected_delivery.isoformat(),
                     "Status": status,
                     "Invoice_Document": bill_b64,
+                },
+            )
+        st.session_state["last_po"] = {
+            "po_number": invoice_number.strip(),
+            "supplier": supplier.strip(),
+            "delivery": expected_delivery.isoformat(),
+            "items": valid_products,
+            "total": f"{total_order_value:.2f}",
+        }
+        st.success("Purchase order created.")
+        st.session_state["po_product_count"] = 1
+        st.rerun()
+
+st.markdown("---")
+
+last_po = st.session_state.get("last_po")
+if last_po:
+    st.subheader("Send Purchase Order")
+    send_to = st.radio("Recipient Type", ["Send to Supplier", "Send to Customer", "Send to Custom Contact"], horizontal=True)
+
+    recipient_name = ""
+    recipient_email = ""
+    recipient_phone = ""
+
+    if send_to == "Send to Supplier":
+        supplier_contacts = {}
+        for row in parts_records:
+            name = row.get("Supplier_Name", "").strip()
+            if name and name not in supplier_contacts:
+                supplier_contacts[name] = {
+                    "email": row.get("Supplier_Email", "").strip(),
+                    "phone": row.get("Supplier_Phone", "").strip(),
                 }
-                append_record(worksheet, PURCHASE_ORDERS_HEADERS, payload)
-            st.success("Purchase order created successfully.")
-            st.session_state["po_product_count"] = 1
-            st.rerun()
-        except Exception as exc:
-            st.error(f"Error creating purchase order: {exc}")
+        if supplier_contacts:
+            pick = st.selectbox("Supplier", options=list(supplier_contacts.keys()))
+            recipient_name = pick
+            recipient_email = supplier_contacts[pick].get("email", "")
+            recipient_phone = supplier_contacts[pick].get("phone", "")
+        else:
+            st.info("No suppliers found from Parts sheet.")
+
+    elif send_to == "Send to Customer":
+        customer_map = {}
+        for row in contact_records:
+            name = row.get("Name", "").strip()
+            if name:
+                customer_map[name] = {
+                    "email": row.get("Email", "").strip(),
+                    "phone": row.get("Phone", "").strip(),
+                }
+        if customer_map:
+            pick = st.selectbox("Customer", options=list(customer_map.keys()))
+            recipient_name = pick
+            recipient_email = customer_map[pick].get("email", "")
+            recipient_phone = customer_map[pick].get("phone", "")
+        else:
+            st.info("No customers found.")
+
+    else:
+        recipient_name = st.text_input("Name", value="Contact")
+        recipient_email = st.text_input("Email")
+        recipient_phone = st.text_input("Phone")
+
+    po_subject, po_body = build_po_email(
+        last_po["po_number"],
+        last_po["delivery"],
+        last_po["items"],
+        last_po["total"],
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("📧 Send via Email"):
+            if not recipient_email.strip():
+                st.error("Recipient email is missing.")
+            else:
+                try:
+                    service = get_gmail_service()
+                    send_email(service, recipient_email.strip(), po_subject, po_body)
+                    st.success(f"Purchase order email sent to {recipient_email.strip()}.")
+                except Exception as exc:
+                    st.error(f"Email failed: {exc}")
+
+    with c2:
+        whatsapp_msg = build_po_whatsapp(
+            recipient_name or "Contact",
+            last_po["po_number"],
+            last_po["delivery"],
+            last_po["items"],
+            last_po["total"],
+        )
+        if recipient_phone.strip():
+            st.link_button("💬 Send via WhatsApp", generate_whatsapp_link(recipient_phone.strip(), whatsapp_msg))
+        else:
+            st.caption("Enter/select a phone number to enable WhatsApp link.")
 
 st.markdown("---")
 st.subheader("Edit / Delete Purchase Order")
-if records:
-    if is_admin():
-        option_map = {
-            f"{r.get('Supplier', '').strip()} | {r.get('Invoice Number', '').strip() or 'No Invoice'} | {r.get('Part Name', '').strip()}": r
-            for r in records
-        }
-        selected_key = st.selectbox("Select order", options=list(option_map.keys()))
-        selected = option_map[selected_key]
+if records and is_admin():
+    option_map = {
+        f"{r.get('Supplier', '').strip()} | {r.get('Invoice Number', '').strip()} | {r.get('Part Name', '').strip()}": r
+        for r in records
+    }
+    selected_key = st.selectbox("Select order", options=list(option_map.keys()))
+    selected = option_map[selected_key]
 
-        with st.form("edit_po_form"):
-            c1, c2 = st.columns(2)
-            with c1:
-                e_supplier = st.text_input("Supplier", value=selected["Supplier"])
-                e_invoice_number = st.text_input("Invoice Number", value=selected.get("Invoice Number", ""))
-                e_part_name = st.text_input("Part Name", value=selected["Part Name"])
-                e_quantity = st.number_input(
-                    "Quantity Ordered",
-                    min_value=1,
-                    step=1,
-                    value=max(1, to_int(selected["Quantity Ordered"])),
-                )
-            with c2:
-                e_unit_price = st.number_input(
-                    "Unit Price",
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    value=to_float(selected.get("Unit Price", "0")),
-                )
-                e_order_date = st.date_input("Order Date", value=parse_date(selected["Order Date"]))
-                e_expected_delivery = st.date_input(
-                    "Expected Delivery",
-                    value=parse_date(selected["Expected Delivery"]),
-                )
-                current_status = selected["Status"] if selected["Status"] in STATUS_OPTIONS else STATUS_OPTIONS[0]
-                e_status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(current_status))
+    with st.form("edit_po_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            e_supplier = st.text_input("Supplier", value=selected.get("Supplier", ""))
+            e_invoice_number = st.text_input("Invoice Number", value=selected.get("Invoice Number", ""))
+            e_part_name = st.text_input("Part Name", value=selected.get("Part Name", ""))
+            e_quantity = st.number_input("Quantity Ordered", min_value=1, step=1, value=max(1, to_int(selected.get("Quantity Ordered", "1"))))
+        with c2:
+            e_unit_price = st.number_input("Unit Price", min_value=0.0, step=0.01, format="%.2f", value=to_float(selected.get("Unit Price", "0")))
+            e_order_date = st.date_input("Order Date", value=parse_date(selected.get("Order Date", "")))
+            e_expected_delivery = st.date_input("Expected Delivery", value=parse_date(selected.get("Expected Delivery", "")))
+            current_status = selected.get("Status", STATUS_OPTIONS[0])
+            status_idx = STATUS_OPTIONS.index(current_status) if current_status in STATUS_OPTIONS else 0
+            e_status = st.selectbox("Status", STATUS_OPTIONS, index=status_idx)
 
-            update_submit = st.form_submit_button("Update Order")
-            if update_submit:
-                if not e_supplier.strip() or not e_part_name.strip():
-                    st.error("Supplier and Part Name are required.")
-                else:
-                    e_line_total = int(e_quantity) * float(e_unit_price)
-                    payload = {
-                        "Supplier": e_supplier.strip(),
-                        "Invoice Number": e_invoice_number.strip(),
-                        "Part Name": e_part_name.strip(),
-                        "Quantity Ordered": str(int(e_quantity)),
-                        "Unit Price": f"{float(e_unit_price):.2f}",
-                        "Line Total": f"{e_line_total:.2f}",
-                        "Total Order Value": selected.get("Total Order Value", f"{e_line_total:.2f}"),
-                        "Order Date": e_order_date.isoformat(),
-                        "Expected Delivery": e_expected_delivery.isoformat(),
-                        "Status": e_status,
-                        "Invoice_Document": selected.get("Invoice_Document", ""),
-                    }
-                    try:
-                        update_record(worksheet, selected["_row"], PURCHASE_ORDERS_HEADERS, payload)
-                        st.success("Purchase order updated successfully.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Error updating purchase order: {exc}")
+        update_submit = st.form_submit_button("Update Order")
+        if update_submit:
+            line_total = int(e_quantity) * float(e_unit_price)
+            payload = {
+                "Supplier": e_supplier.strip(),
+                "Invoice Number": e_invoice_number.strip(),
+                "Part Name": e_part_name.strip(),
+                "Quantity Ordered": str(int(e_quantity)),
+                "Unit Price": f"{float(e_unit_price):.2f}",
+                "Line Total": f"{line_total:.2f}",
+                "Total Order Value": selected.get("Total Order Value", f"{line_total:.2f}"),
+                "Order Date": e_order_date.isoformat(),
+                "Expected Delivery": e_expected_delivery.isoformat(),
+                "Status": e_status,
+                "Invoice_Document": selected.get("Invoice_Document", ""),
+            }
+            update_record(worksheet, selected["_row"], PURCHASE_ORDERS_HEADERS, payload)
+            st.success("Order updated.")
+            st.rerun()
 
-        confirm_delete = st.checkbox("Confirm delete selected order")
-        if st.button("Delete Order", type="secondary"):
-            if not confirm_delete:
-                st.error("Please confirm deletion first.")
-            else:
-                try:
-                    delete_record(worksheet, selected["_row"])
-                    st.success("Purchase order deleted successfully.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Error deleting purchase order: {exc}")
-    else:
-        st.warning("🔐 Admin login required to edit or delete records.")
+    confirm_delete = st.checkbox("Confirm delete selected order")
+    if st.button("Delete Order"):
+        if not confirm_delete:
+            st.error("Please confirm deletion first.")
+        else:
+            delete_record(worksheet, selected["_row"])
+            st.success("Order deleted.")
+            st.rerun()
+elif records:
+    st.info("Admin access required for edit/delete.")
 else:
-    st.info("Create an order to enable edit/delete actions.")
+    st.info("Create an order first.")
