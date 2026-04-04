@@ -25,7 +25,7 @@ from utils.constants import (
     SALES_RECORDS_HEADERS,
     SALES_RECORDS_TAB,
 )
-from utils.sheets_db import append_record, get_cached_data, get_or_create_worksheet
+from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -104,24 +104,6 @@ spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
 
-parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
-categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
-price_history_ws = get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
-contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
-purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
-sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
-returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
-
-parts = get_cached_data(parts_ws.title)
-categories = get_cached_data(categories_ws.title)
-price_history = get_cached_data(price_history_ws.title)
-contacts = get_cached_data(contacts_ws.title)
-payments = get_cached_data(payments_ws.title)
-purchases = get_cached_data(purchase_ws.title)
-sales = get_cached_data(sales_ws.title)
-returns = get_cached_data(returns_ws.title)
-
 st.subheader("Section A - Export Data")
 export_type = st.selectbox(
     "Choose export option",
@@ -129,98 +111,128 @@ export_type = st.selectbox(
 )
 export_format = st.selectbox("Format", ["Excel", "CSV", "Excel report"])
 
-if export_type == "Export Stock Data":
-    stock_sheets = {
-        PARTS_TAB: records_to_df(parts),
-        PRICE_HISTORY_TAB: records_to_df(price_history),
-        CATEGORIES_TAB: records_to_df(categories),
-    }
-    if export_format == "Excel":
-        data = make_excel(stock_sheets)
-        st.download_button("Download Stock Excel", data=data, file_name=f"stock_data_{date.today().isoformat()}.xlsx")
-    elif export_format == "CSV":
-        data = make_csv_combined(stock_sheets)
-        st.download_button("Download Stock CSV", data=data, file_name=f"stock_data_{date.today().isoformat()}.csv")
-    else:
-        total_qty = sum(int(float(str(r.get("Quantity", "0") or 0))) for r in parts)
-        lines = [
-            f"Stock rows: {len(parts)}",
-            f"Total quantity across suppliers: {total_qty}",
-            f"Categories: {len(categories)}",
-            f"Price history records: {len(price_history)}",
-        ]
-        data = make_excel_report("Stock Summary Report", lines, stock_sheets)
-        st.download_button("Download Stock Excel Report", data=data, file_name=f"stock_summary_{date.today().isoformat()}.xlsx")
+if "export_blob" not in st.session_state:
+    st.session_state["export_blob"] = None
+    st.session_state["export_filename"] = ""
+    st.session_state["export_button_text"] = "Download Export"
 
-elif export_type == "Export Transaction Data":
+if export_type == "Export Transaction Data":
     c1, c2 = st.columns(2)
     with c1:
         start_date = st.date_input("Start Date", value=date.today(), key="txn_start")
     with c2:
         end_date = st.date_input("End Date", value=date.today(), key="txn_end")
-
-    sales_df = records_to_df(sales)
-    purchases_df = records_to_df(purchases)
-    returns_df = records_to_df(returns)
-
-    if not sales_df.empty:
-        sales_df["Date"] = pd.to_datetime(sales_df["Date"], errors="coerce")
-        sales_df = sales_df[(sales_df["Date"].dt.date >= start_date) & (sales_df["Date"].dt.date <= end_date)]
-    if not purchases_df.empty:
-        purchases_df["Date"] = pd.to_datetime(purchases_df["Date"], errors="coerce")
-        purchases_df = purchases_df[(purchases_df["Date"].dt.date >= start_date) & (purchases_df["Date"].dt.date <= end_date)]
-    if not returns_df.empty:
-        returns_df["Date"] = pd.to_datetime(returns_df["Date"], errors="coerce")
-        returns_df = returns_df[(returns_df["Date"].dt.date >= start_date) & (returns_df["Date"].dt.date <= end_date)]
-
-    total_sales_value = pd.to_numeric(sales_df.get("Total_Sale_Value", 0), errors="coerce").fillna(0).sum() if not sales_df.empty else 0.0
-    total_purchase_value = pd.to_numeric(purchases_df.get("Total_Purchase_Value", 0), errors="coerce").fillna(0).sum() if not purchases_df.empty else 0.0
-    net_movement = total_sales_value - total_purchase_value
-    st.markdown(
-        f"Total sales value: ₹{total_sales_value:,.2f} | Total purchase value: ₹{total_purchase_value:,.2f} | Net movement: ₹{net_movement:,.2f}"
-    )
-
-    tx_sheets = {
-        SALES_RECORDS_TAB: sales_df,
-        PURCHASE_RECORDS_TAB: purchases_df,
-        RETURNS_TAB: returns_df,
-    }
-
-    if export_format == "Excel":
-        data = make_excel(tx_sheets)
-        st.download_button("Download Transaction Excel", data=data, file_name=f"transactions_{date.today().isoformat()}.xlsx")
-    elif export_format == "CSV":
-        data = make_csv_combined(tx_sheets)
-        st.download_button("Download Transaction CSV", data=data, file_name=f"transactions_{date.today().isoformat()}.csv")
-    else:
-        lines = [
-            f"Date range: {start_date} to {end_date}",
-            f"Sales rows: {len(sales_df)}",
-            f"Purchase rows: {len(purchases_df)}",
-            f"Return rows: {len(returns_df)}",
-            f"Total sales value: ₹{total_sales_value:,.2f}",
-            f"Total purchase value: ₹{total_purchase_value:,.2f}",
-            f"Net movement: ₹{net_movement:,.2f}",
-        ]
-        data = make_excel_report("Transaction Summary Report", lines, tx_sheets)
-        st.download_button("Download Transaction Excel Report", data=data, file_name=f"transactions_{date.today().isoformat()}.xlsx")
-
 else:
-    all_sheets = {}
-    for ws in spreadsheet.worksheets():
-        values = ws.get_all_values()
-        if not values:
-            all_sheets[ws.title] = pd.DataFrame()
-            continue
-        headers = values[0]
-        rows = values[1:]
-        all_sheets[ws.title] = pd.DataFrame(rows, columns=headers)
+    start_date = None
+    end_date = None
 
-    data = make_excel(all_sheets)
+if st.button("Generate Export File"):
+    with st.spinner("Fetching data from Google Sheets..."):
+        if export_type == "Export Stock Data":
+            parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
+            categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
+            price_history = fetch_sheet_data_by_name(PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
+
+            stock_sheets = {
+                PARTS_TAB: records_to_df(parts),
+                PRICE_HISTORY_TAB: records_to_df(price_history),
+                CATEGORIES_TAB: records_to_df(categories),
+            }
+
+            if export_format == "Excel":
+                st.session_state["export_blob"] = make_excel(stock_sheets)
+                st.session_state["export_filename"] = f"stock_data_{date.today().isoformat()}.xlsx"
+                st.session_state["export_button_text"] = "Download Stock Excel"
+            elif export_format == "CSV":
+                st.session_state["export_blob"] = make_csv_combined(stock_sheets)
+                st.session_state["export_filename"] = f"stock_data_{date.today().isoformat()}.csv"
+                st.session_state["export_button_text"] = "Download Stock CSV"
+            else:
+                total_qty = sum(int(float(str(r.get("Quantity", "0") or 0))) for r in parts)
+                lines = [
+                    f"Stock rows: {len(parts)}",
+                    f"Total quantity across suppliers: {total_qty}",
+                    f"Categories: {len(categories)}",
+                    f"Price history records: {len(price_history)}",
+                ]
+                st.session_state["export_blob"] = make_excel_report("Stock Summary Report", lines, stock_sheets)
+                st.session_state["export_filename"] = f"stock_summary_{date.today().isoformat()}.xlsx"
+                st.session_state["export_button_text"] = "Download Stock Excel Report"
+
+        elif export_type == "Export Transaction Data":
+            sales = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
+            purchases = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
+            returns = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
+
+            sales_df = records_to_df(sales)
+            purchases_df = records_to_df(purchases)
+            returns_df = records_to_df(returns)
+
+            if not sales_df.empty:
+                sales_df["Date"] = pd.to_datetime(sales_df["Date"], errors="coerce")
+                sales_df = sales_df[(sales_df["Date"].dt.date >= start_date) & (sales_df["Date"].dt.date <= end_date)]
+            if not purchases_df.empty:
+                purchases_df["Date"] = pd.to_datetime(purchases_df["Date"], errors="coerce")
+                purchases_df = purchases_df[(purchases_df["Date"].dt.date >= start_date) & (purchases_df["Date"].dt.date <= end_date)]
+            if not returns_df.empty:
+                returns_df["Date"] = pd.to_datetime(returns_df["Date"], errors="coerce")
+                returns_df = returns_df[(returns_df["Date"].dt.date >= start_date) & (returns_df["Date"].dt.date <= end_date)]
+
+            total_sales_value = pd.to_numeric(sales_df.get("Total_Sale_Value", 0), errors="coerce").fillna(0).sum() if not sales_df.empty else 0.0
+            total_purchase_value = pd.to_numeric(purchases_df.get("Total_Purchase_Value", 0), errors="coerce").fillna(0).sum() if not purchases_df.empty else 0.0
+            net_movement = total_sales_value - total_purchase_value
+            st.markdown(
+                f"Total sales value: Rs {total_sales_value:,.2f} | Total purchase value: Rs {total_purchase_value:,.2f} | Net movement: Rs {net_movement:,.2f}"
+            )
+
+            tx_sheets = {
+                SALES_RECORDS_TAB: sales_df,
+                PURCHASE_RECORDS_TAB: purchases_df,
+                RETURNS_TAB: returns_df,
+            }
+
+            if export_format == "Excel":
+                st.session_state["export_blob"] = make_excel(tx_sheets)
+                st.session_state["export_filename"] = f"transactions_{date.today().isoformat()}.xlsx"
+                st.session_state["export_button_text"] = "Download Transaction Excel"
+            elif export_format == "CSV":
+                st.session_state["export_blob"] = make_csv_combined(tx_sheets)
+                st.session_state["export_filename"] = f"transactions_{date.today().isoformat()}.csv"
+                st.session_state["export_button_text"] = "Download Transaction CSV"
+            else:
+                lines = [
+                    f"Date range: {start_date} to {end_date}",
+                    f"Sales rows: {len(sales_df)}",
+                    f"Purchase rows: {len(purchases_df)}",
+                    f"Return rows: {len(returns_df)}",
+                    f"Total sales value: Rs {total_sales_value:,.2f}",
+                    f"Total purchase value: Rs {total_purchase_value:,.2f}",
+                    f"Net movement: Rs {net_movement:,.2f}",
+                ]
+                st.session_state["export_blob"] = make_excel_report("Transaction Summary Report", lines, tx_sheets)
+                st.session_state["export_filename"] = f"transactions_{date.today().isoformat()}.xlsx"
+                st.session_state["export_button_text"] = "Download Transaction Excel Report"
+
+        else:
+            all_sheets = {}
+            for ws in spreadsheet.worksheets():
+                values = ws.get_all_values()
+                if not values:
+                    all_sheets[ws.title] = pd.DataFrame()
+                    continue
+                headers = values[0]
+                rows = values[1:]
+                all_sheets[ws.title] = pd.DataFrame(rows, columns=headers)
+
+            st.session_state["export_blob"] = make_excel(all_sheets)
+            st.session_state["export_filename"] = f"Satyam_Tex_Fabb_Backup_{date.today().isoformat()}.xlsx"
+            st.session_state["export_button_text"] = "Download Full Backup"
+
+if st.session_state.get("export_blob"):
     st.download_button(
-        "Download Full Backup",
-        data=data,
-        file_name=f"Satyam_Tex_Fabb_Backup_{date.today().isoformat()}.xlsx",
+        st.session_state.get("export_button_text", "Download Export"),
+        data=st.session_state["export_blob"],
+        file_name=st.session_state.get("export_filename", f"export_{date.today().isoformat()}.xlsx"),
     )
 
 st.markdown("---")
@@ -231,11 +243,11 @@ else:
     upload = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"], key="import_file")
 
     target_sheet_options = {
-        "Parts": (parts_ws, PARTS_HEADERS),
-        "Customers": (contacts_ws, CONTACTS_HEADERS),
-        "Payments": (payments_ws, PAYMENTS_HEADERS),
-        "Purchase_Records": (purchase_ws, PURCHASE_RECORDS_HEADERS),
-        "Sales_Records": (sales_ws, SALES_RECORDS_HEADERS),
+        "Parts": (PARTS_TAB, PARTS_HEADERS),
+        "Customers": (CONTACTS_TAB, CONTACTS_HEADERS),
+        "Payments": (PAYMENTS_TAB, PAYMENTS_HEADERS),
+        "Purchase_Records": (PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS),
+        "Sales_Records": (SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
     }
     target_name = st.selectbox("Import into", options=list(target_sheet_options.keys()))
 
@@ -248,7 +260,7 @@ else:
         st.markdown("Preview (first 5 rows)")
         st.dataframe(input_df.head(5), use_container_width=True, hide_index=True)
 
-        target_ws, target_headers = target_sheet_options[target_name]
+        target_tab, target_headers = target_sheet_options[target_name]
         source_cols = ["-- Skip --"] + list(input_df.columns)
 
         st.markdown("Column Mapping")
@@ -263,6 +275,7 @@ else:
             )
 
         if st.button("Import Data"):
+            target_ws = get_or_create_worksheet(spreadsheet, target_tab, target_headers)
             imported = 0
             for _, row in input_df.iterrows():
                 payload = {}

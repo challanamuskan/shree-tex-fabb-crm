@@ -13,7 +13,7 @@ from utils.constants import (
     EMAIL_LOG_TAB,
 )
 from utils.gmail_sender import get_gmail_service, send_email
-from utils.sheets_db import append_record, get_cached_data, get_or_create_worksheet
+from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
@@ -142,7 +142,7 @@ if not spreadsheet:
 contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
 email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
 
-contacts = get_cached_data(contacts_ws.title)
+contacts = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
 
 audience_rows = []
 for contact in contacts:

@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import gspread
+import pandas as pd
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -145,6 +146,25 @@ def get_cached_data(tab_name):
         for idx, row in enumerate(records, start=2):
             row["_row"] = idx
         return records
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_sheet_data_by_name(tab_name, headers):
+    from utils.ui import get_spreadsheet_connection
+
+    sh = get_spreadsheet_connection()
+    try:
+        ws = sh.worksheet(tab_name)
+        # Fetch all values once
+        values = ws.get_all_values()
+        if len(values) <= 1:
+            return []
+        rows = [dict(zip(headers, row)) for row in values[1:]]
+        for idx, row in enumerate(rows, start=2):
+            row["_row"] = idx
+        return rows
     except Exception:
         return []
 
