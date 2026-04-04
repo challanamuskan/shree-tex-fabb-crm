@@ -5,7 +5,7 @@ from datetime import date
 import streamlit as st
 
 from utils.auth import require_login
-from utils.constants import PARTS_HEADERS, PARTS_TAB, RETURNS_HEADERS, RETURNS_TAB
+from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, RETURNS_HEADERS, RETURNS_TAB
 from utils.sheets_db import append_record, get_or_create_worksheet, read_records, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
@@ -46,12 +46,16 @@ if not spreadsheet:
     st.stop()
 
 parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
+categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
 parts = read_records(parts_ws, PARTS_HEADERS)
-part_names = sorted({p.get("Part_Name", "").strip() for p in parts if p.get("Part_Name", "").strip()})
+categories = read_records(categories_ws, CATEGORIES_HEADERS)
+category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
+if not category_names:
+    category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
 
-if not part_names:
+if not category_names:
     st.info("No parts found.")
     st.stop()
 
@@ -60,7 +64,13 @@ sale_tab, purchase_tab = st.tabs(["Sale Returns", "Purchase Returns"])
 with sale_tab:
     with st.form("sale_return_form", clear_on_submit=True):
         invoice_no = st.text_input("Original Sale Invoice Number")
-        part_name = st.selectbox("Part Name", options=part_names, key="sale_return_part")
+        sale_category = st.selectbox("Category", options=category_names, key="sale_return_category")
+        category_rows = [p for p in parts if (p.get("Category", "").strip() or "Uncategorised") == sale_category]
+        sale_parts = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
+        if not sale_parts:
+            st.info("No parts found in the selected category.")
+            st.stop()
+        part_name = st.selectbox("Part Name", options=sale_parts, key="sale_return_part")
         qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1)
         return_date = st.date_input("Return Date", value=date.today(), key="sale_return_date")
         party_name = st.text_input("Party Name")
@@ -74,7 +84,7 @@ with sale_tab:
 
         submit_sale_return = st.form_submit_button("Record Sale Return")
         if submit_sale_return:
-            rows = [r for r in parts if r.get("Part_Name", "").strip() == part_name]
+            rows = [r for r in category_rows if r.get("Part_Name", "").strip() == part_name]
             if not rows:
                 st.error("Part not found.")
             else:
@@ -108,7 +118,7 @@ with sale_tab:
                         "Date": return_date.isoformat(),
                         "Type": "Sale Return",
                         "Part_Name": target.get("Part_Name", "").strip(),
-                        "Category": target.get("Category", "").strip(),
+                        "Category": sale_category,
                         "Supplier_Name": target.get("Supplier_Name", "").strip(),
                         "Quantity": str(int(qty)),
                         "Invoice_Number": invoice_no.strip(),
@@ -123,14 +133,14 @@ with sale_tab:
 with purchase_tab:
     with st.form("purchase_return_form", clear_on_submit=True):
         invoice_no = st.text_input("Original Purchase Invoice Number")
+        purchase_category = st.selectbox("Category", options=category_names, key="purchase_return_category")
+        category_rows = [r for r in parts if (r.get("Category", "").strip() or "Uncategorised") == purchase_category]
+        part_names = sorted({r.get("Part_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip()})
+        if not part_names:
+            st.info("No parts found in the selected category.")
+            st.stop()
         part_name = st.selectbox("Part Name", options=part_names, key="purchase_return_part")
-        suppliers_for_part = sorted(
-            {
-                r.get("Supplier_Name", "").strip()
-                for r in parts
-                if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip()
-            }
-        )
+        suppliers_for_part = sorted({r.get("Supplier_Name", "").strip() for r in category_rows if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip()})
         supplier_name = st.selectbox("Supplier Name", options=suppliers_for_part if suppliers_for_part else [""], key="purchase_return_supplier")
         qty = st.number_input("Quantity Returned", min_value=1, step=1, value=1, key="purchase_return_qty")
         return_date = st.date_input("Return Date", value=date.today(), key="purchase_return_date")
@@ -147,7 +157,7 @@ with purchase_tab:
             target = next(
                 (
                     r
-                    for r in parts
+                    for r in category_rows
                     if r.get("Part_Name", "").strip() == part_name and r.get("Supplier_Name", "").strip() == supplier_name
                 ),
                 None,
@@ -187,7 +197,7 @@ with purchase_tab:
                             "Date": return_date.isoformat(),
                             "Type": "Purchase Return",
                             "Part_Name": target.get("Part_Name", "").strip(),
-                            "Category": target.get("Category", "").strip(),
+                            "Category": purchase_category,
                             "Supplier_Name": target.get("Supplier_Name", "").strip(),
                             "Quantity": str(int(qty)),
                             "Invoice_Number": invoice_no.strip(),

@@ -80,6 +80,52 @@ sales_records = read_records(sales_ws, SALES_RECORDS_HEADERS)
 purchase_records = read_records(purchase_ws, PURCHASE_RECORDS_HEADERS)
 returns_records = read_records(returns_ws, RETURNS_HEADERS)
 
+if "dismiss_low_stock" not in st.session_state:
+    st.session_state.dismiss_low_stock = False
+
+st.subheader("Current Stock")
+with st.expander("📋 Current Stock Overview — click to expand", expanded=False):
+    if parts:
+        for category in sorted(set(p.get("Category", "Uncategorised") or "Uncategorised" for p in parts)):
+            st.markdown(f"**{category}**")
+            cat_parts = [p for p in parts if (p.get("Category", "Uncategorised") or "Uncategorised") == category]
+            seen_parts = list(dict.fromkeys(p.get("Part_Name", "") for p in cat_parts if p.get("Part_Name", "").strip()))
+            for part_name in seen_parts:
+                part_rows = [p for p in cat_parts if p.get("Part_Name", "") == part_name]
+                total_qty = sum(to_int(p.get("Quantity", 0)) for p in part_rows)
+                reorder = to_int(part_rows[0].get("Reorder_Level", 0)) if part_rows else 0
+                if total_qty <= reorder:
+                    status = "🔴 Low Stock"
+                elif total_qty:
+                    status = "🟢 OK"
+                else:
+                    status = "⚪ No Data"
+                img_b64 = part_rows[0].get("Product_Image", "") if part_rows else ""
+
+                col1, col2, col3, col4, col5 = st.columns([1, 2, 3, 1, 1])
+                with col1:
+                    if img_b64:
+                        try:
+                            img = base64_to_image(img_b64)
+                            if img is not None:
+                                st.image(img, width=50)
+                            else:
+                                st.write("🔩")
+                        except Exception:
+                            st.write("🔩")
+                    else:
+                        st.write("🔩")
+                with col2:
+                    st.write(category)
+                with col3:
+                    st.write(part_name)
+                with col4:
+                    st.write(f"{total_qty} units")
+                with col5:
+                    st.write(status)
+    else:
+        st.info("No parts found.")
+
 st.subheader("Section A - Category Manager")
 if categories:
     with st.expander(f"View Categories ({len(categories)})", expanded=False):
@@ -227,10 +273,15 @@ for category_name, grouped_parts in parts_by_category.items():
                 f"⚠️ LOW STOCK ALERT: {part_name_key} — Only {total_stock} units remaining (Reorder level: {reorder_level_val})"
             )
 
-if low_stock_messages:
-    for msg in low_stock_messages:
-        st.error(msg)
-else:
+if low_stock_messages and not st.session_state.dismiss_low_stock:
+    col1, col2 = st.columns([10, 1])
+    with col1:
+        st.error(f"⚠️ LOW STOCK ALERT: {', '.join(low_stock_messages)}")
+    with col2:
+        if st.button("✕", key="dismiss_alert"):
+            st.session_state.dismiss_low_stock = True
+            st.rerun()
+elif not low_stock_messages:
     st.success("No low stock alerts.")
 
 if not parts_by_category:
@@ -281,16 +332,19 @@ if not is_admin():
 elif not parts:
     st.info("No parts available for price management.")
 else:
-    part_names = sorted({r.get("Part_Name", "").strip() for r in parts if r.get("Part_Name", "").strip()})
-    selected_part = st.selectbox("Part Name", options=part_names)
+    categories_list = sorted({r.get("Category", "").strip() or "Uncategorised" for r in parts})
+    selected_category = st.selectbox("Category", options=categories_list, key="price_cat")
+    category_parts = [r for r in parts if (r.get("Category", "").strip() or "Uncategorised") == selected_category]
+    part_names = sorted({r.get("Part_Name", "").strip() for r in category_parts if r.get("Part_Name", "").strip()})
+    selected_part = st.selectbox("Part Name", options=part_names, key="price_part")
     supplier_names = sorted(
         {
             r.get("Supplier_Name", "").strip()
-            for r in parts
+            for r in category_parts
             if r.get("Part_Name", "").strip() == selected_part and r.get("Supplier_Name", "").strip()
         }
     )
-    selected_supplier = st.selectbox("Supplier", options=supplier_names)
+    selected_supplier = st.selectbox("Supplier", options=supplier_names, key="price_supplier")
 
     filtered_history = [
         h

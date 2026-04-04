@@ -1,10 +1,10 @@
 import io
+import csv
 from datetime import date
 
 import pandas as pd
 import streamlit as st
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from openpyxl import Workbook
 
 from utils.auth import is_admin, require_login
 from utils.constants import (
@@ -68,26 +68,34 @@ def make_csv_combined(sheet_data):
         out = pd.concat(rows, ignore_index=True)
     else:
         out = pd.DataFrame(columns=["Sheet_Name"])
-    return out.to_csv(index=False).encode("utf-8")
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(out.columns.tolist())
+    for row in out.itertuples(index=False):
+        writer.writerow(list(row))
+    return buffer.getvalue().encode("utf-8")
 
 
-def make_pdf_summary(title, lines):
+def make_excel_report(title, lines, sheet_data):
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 50
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, y, title)
-    y -= 30
-    c.setFont("Helvetica", 10)
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "Summary"
+    summary.append([title])
+    summary.append([])
     for line in lines:
-        c.drawString(40, y, str(line)[:120])
-        y -= 16
-        if y < 50:
-            c.showPage()
-            c.setFont("Helvetica", 10)
-            y = height - 50
-    c.save()
+        summary.append([line])
+
+    for sheet_name, df in sheet_data.items():
+        worksheet = workbook.create_sheet(title=sheet_name[:31] if sheet_name else "Sheet")
+        if df.empty:
+            worksheet.append(["No data"])
+            continue
+        worksheet.append(list(df.columns))
+        for row in df.itertuples(index=False):
+            worksheet.append(list(row))
+
+    workbook.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -119,7 +127,7 @@ export_type = st.selectbox(
     "Choose export option",
     ["Export Stock Data", "Export Transaction Data", "Export Full Backup"],
 )
-export_format = st.selectbox("Format", ["Excel", "CSV", "PDF summary"])
+export_format = st.selectbox("Format", ["Excel", "CSV", "Excel report"])
 
 if export_type == "Export Stock Data":
     stock_sheets = {
@@ -141,8 +149,8 @@ if export_type == "Export Stock Data":
             f"Categories: {len(categories)}",
             f"Price history records: {len(price_history)}",
         ]
-        data = make_pdf_summary("Stock Summary Report", lines)
-        st.download_button("Download Stock PDF", data=data, file_name=f"stock_summary_{date.today().isoformat()}.pdf")
+        data = make_excel_report("Stock Summary Report", lines, stock_sheets)
+        st.download_button("Download Stock Excel Report", data=data, file_name=f"stock_summary_{date.today().isoformat()}.xlsx")
 
 elif export_type == "Export Transaction Data":
     c1, c2 = st.columns(2)
@@ -194,8 +202,8 @@ elif export_type == "Export Transaction Data":
             f"Total purchase value: ₹{total_purchase_value:,.2f}",
             f"Net movement: ₹{net_movement:,.2f}",
         ]
-        data = make_pdf_summary("Transaction Summary Report", lines)
-        st.download_button("Download Transaction PDF", data=data, file_name=f"transactions_{date.today().isoformat()}.pdf")
+        data = make_excel_report("Transaction Summary Report", lines, tx_sheets)
+        st.download_button("Download Transaction Excel Report", data=data, file_name=f"transactions_{date.today().isoformat()}.xlsx")
 
 else:
     all_sheets = {}
