@@ -25,7 +25,7 @@ from utils.constants import (
     SALES_RECORDS_HEADERS,
     SALES_RECORDS_TAB,
 )
-from utils.sheets_db import append_record, get_cached_records_by_title, get_or_create_worksheet
+from utils.sheets_db import append_record, get_cached_data, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
@@ -113,14 +113,14 @@ purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHAS
 sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
 returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
 
-parts = get_cached_records_by_title(parts_ws.title, PARTS_HEADERS)
-categories = get_cached_records_by_title(categories_ws.title, CATEGORIES_HEADERS)
-price_history = get_cached_records_by_title(price_history_ws.title, PRICE_HISTORY_HEADERS)
-contacts = get_cached_records_by_title(contacts_ws.title, CONTACTS_HEADERS)
-payments = get_cached_records_by_title(payments_ws.title, PAYMENTS_HEADERS)
-purchases = get_cached_records_by_title(purchase_ws.title, PURCHASE_RECORDS_HEADERS)
-sales = get_cached_records_by_title(sales_ws.title, SALES_RECORDS_HEADERS)
-returns = get_cached_records_by_title(returns_ws.title, RETURNS_HEADERS)
+parts = get_cached_data(parts_ws.title)
+categories = get_cached_data(categories_ws.title)
+price_history = get_cached_data(price_history_ws.title)
+contacts = get_cached_data(contacts_ws.title)
+payments = get_cached_data(payments_ws.title)
+purchases = get_cached_data(purchase_ws.title)
+sales = get_cached_data(sales_ws.title)
+returns = get_cached_data(returns_ws.title)
 
 st.subheader("Section A - Export Data")
 export_type = st.selectbox(
