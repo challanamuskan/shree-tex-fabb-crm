@@ -282,86 +282,53 @@ else:
                 st.error("Unsupported file type. Please upload .xls, .xlsx, or .csv")
                 st.stop()
 
-            st.success(f"✅ File loaded successfully: {len(input_df)} rows, {len(input_df.columns)} columns")
+            st.success(f"✅ File loaded: {len(input_df)} rows")
 
         except Exception as e:
             st.error(f"Could not read file: {str(e)}")
             st.info("💡 Try saving your .xls file as .xlsx in Excel: File → Save As → Excel Workbook (.xlsx)")
             st.stop()
 
-        st.write("🔍 DEBUG — Raw columns found in your file:")
-        st.write(list(input_df.columns))
-        st.write("🔍 DEBUG — First 2 raw rows before any mapping:")
-        st.dataframe(input_df.head(2))
-
         if target_name == "Parts (Stock)":
             st.markdown("### 📥 Import Stock from Legacy Excel")
             input_df.columns = input_df.columns.str.strip()
-            col_lower = {c.lower(): c for c in input_df.columns}
-
             COLUMN_MAP = {
-                "productnameimage": "Part_Name",
-                "productname": "Part_Name",
-                "product_name": "Part_Name",
-                "part_name": "Part_Name",
-                "name": "Part_Name",
-                "price": "Unit_Sale_Price",
-                "unit_sale_price": "Unit_Sale_Price",
-                "sale_price": "Unit_Sale_Price",
-                "unit sale price": "Unit_Sale_Price",
-                "balance": "Quantity",
-                "quantity": "Quantity",
-                "stock": "Quantity",
-                "qty": "Quantity",
-                "category": "Category",
-                "cat": "Category",
                 "cid": "cid",
-                "clientname": "Supplier_Name",
-                "supplier_name": "Supplier_Name",
-                "supplier": "Supplier_Name",
+                "cname": "Category",
+                "productname": "Part_Name",
+                "price": "Unit_Sale_Price",
+                "balance": "Quantity",
                 "status": "status",
                 "balancedate": "Date_Added",
-                "date_added": "Date_Added",
                 "id": "Legacy_ID",
                 "pricetype": "Price_Type",
-                "price_type": "Price_Type",
+                "clientname": "Supplier_Name",
                 "boxnumber": "Box_Number",
-                "box_number": "Box_Number",
             }
 
-            rename_dict = {}
-            for orig_col in input_df.columns:
-                lower = orig_col.lower().strip()
-                if lower in COLUMN_MAP:
-                    rename_dict[orig_col] = COLUMN_MAP[lower]
-                elif orig_col in COLUMN_MAP:
-                    rename_dict[orig_col] = COLUMN_MAP[orig_col]
+            input_df = input_df.rename(columns=COLUMN_MAP)
 
-            input_df = input_df.rename(columns=rename_dict)
-
-            st.write("✅ DEBUG — Columns after mapping:")
-            st.write(list(input_df.columns))
-
-            CRITICAL_COLS = ["Category", "Part_Name", "Unit_Sale_Price", "Quantity"]
-            missing = [c for c in CRITICAL_COLS if c not in input_df.columns]
-            found = [c for c in CRITICAL_COLS if c in input_df.columns]
-
-            if missing:
-                st.warning(f"⚠️ These columns were NOT found in your file: {missing}")
-                st.info("Your file may use different column names. Check the DEBUG output above to see exact column names.")
-            else:
-                st.success(f"✅ All critical columns found: {found}")
-
-            if "Unit_Sale_Price" in input_df.columns:
-                input_df["Unit_Sale_Price"] = input_df["Unit_Sale_Price"].astype(str).apply(
-                    lambda x: x.strip().split("/")[-1].strip() if "/" in str(x) else x.strip()
-                )
-
+            # Drop columns we don't need
             for col in ["image", "rts"]:
                 if col in input_df.columns:
                     input_df = input_df.drop(columns=[col])
 
-            import_headers = [
+            if "Unit_Sale_Price" in input_df.columns:
+                def clean_price(val):
+                    try:
+                        s = str(val).strip()
+                        if s in ["", "nan", "None"]:
+                            return ""
+                        if "/" in s:
+                            # Keep the last value after "/"
+                            return s.split("/")[-1].strip()
+                        return s
+                    except:
+                        return ""
+
+                input_df["Unit_Sale_Price"] = input_df["Unit_Sale_Price"].apply(clean_price)
+
+            PARTS_HEADERS = [
                 "cid",
                 "Category",
                 "Part_Name",
@@ -375,11 +342,14 @@ else:
                 "Supplier_Name",
             ]
 
-            for col in import_headers:
+            for col in PARTS_HEADERS:
                 if col not in input_df.columns:
                     input_df[col] = ""
 
-            df = input_df[import_headers]
+            df = input_df[PARTS_HEADERS]
+            df = df.fillna("").astype(str)
+            # Replace "nan" strings with empty string
+            df = df.replace("nan", "").replace("None", "")
 
             st.subheader("📋 Preview (first 5 rows)")
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
