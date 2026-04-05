@@ -46,10 +46,6 @@ spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
 
-parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
-categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
-sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
-
 parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
 categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
 sales = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
@@ -132,10 +128,15 @@ else:
                                 "Product_Image": row.get("Product_Image", ""),
                                 "Part_Documents": row.get("Part_Documents", ""),
                             }
-                            update_record(parts_ws, row["_row"], PARTS_HEADERS, payload)
+                            update_record(
+                                get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                                row["_row"],
+                                PARTS_HEADERS,
+                                payload,
+                            )
 
                         append_record(
-                            sales_ws,
+                            get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
                             SALES_RECORDS_HEADERS,
                             {
                                 "Date": sale_date.isoformat(),

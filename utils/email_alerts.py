@@ -87,74 +87,65 @@ def set_low_stock_auto_alert_setting(enabled):
 
 def send_low_stock_email_alert():
     try:
+        from utils.sheets_db import fetch_tab
+        import pandas as pd
+
         parts = fetch_tab("Parts")
-    except Exception:
-        parts = []
+        if not parts:
+            return False, "No parts data"
 
-    if not parts:
-        try:
-            parts = fetch_tab(PARTS_TAB)
-        except Exception:
-            parts = []
+        df = pd.DataFrame(parts)
 
-    low_stock_items = []
-    for part in parts:
-        quantity = _to_int(part.get("Quantity", 0))
-        reorder_level = _to_int(part.get("Reorder_Level", 0))
-        if reorder_level > 0 and quantity <= reorder_level:
-            low_stock_items.append(
-                {
-                    "Part_Name": str(part.get("Part_Name", "")).strip(),
-                    "Category": str(part.get("Category", "")).strip(),
-                    "Quantity": quantity,
-                    "Reorder_Level": reorder_level,
-                }
+        def safe_int(v):
+            try:
+                return int(float(str(v).strip()))
+            except:
+                return 0
+
+        df["_qty"] = df["Quantity"].apply(safe_int)
+        df["_reorder"] = df.get("Reorder_Level", pd.Series([0] * len(df))).apply(safe_int)
+        low = df[(df["_reorder"] > 0) & (df["_qty"] <= df["_reorder"])]
+
+        if low.empty:
+            return True, "No low stock items found"
+
+        rows_html = ""
+        for _, row in low.iterrows():
+            rows_html += (
+                f"<tr><td>{row.get('Category', '')}</td><td>{row.get('Part_Name', '')}</td>"
+                f"<td>{row['_qty']}</td><td>{row['_reorder']}</td></tr>"
             )
 
-    if not low_stock_items:
-        return True, 0, "No low stock items found."
+        html = f"""
+        <h2>⚠️ Low Stock Alert — Satyam Tex Fabb</h2>
+        <p>Date: {date.today()}</p>
+        <table border='1' cellpadding='6' style='border-collapse:collapse'>
+        <tr><th>Category</th><th>Part Name</th><th>Current Stock</th><th>Reorder Level</th></tr>
+        {rows_html}
+        </table>
+        """
 
-    admin_email = _resolve_admin_email()
-    if not admin_email:
-        return False, 0, "Missing admin_email in Streamlit secrets."
+        smtp_server = st.secrets.get("smtp_server", "smtp.gmail.com")
+        smtp_port = int(st.secrets.get("smtp_port", 587))
+        sender_email = st.secrets.get("sender_email", "")
+        sender_password = st.secrets.get("sender_password", "")
+        admin_email = st.secrets.get("admin_email", "")
 
-    host, port, username, password, sender = _resolve_smtp_config()
-    if not username or not password:
-        return False, 0, "Missing SMTP credentials in Streamlit secrets."
+        if not all([sender_email, sender_password, admin_email]):
+            return False, "Email credentials not configured in secrets.toml"
 
-    subject = f"⚠️ Low Stock Alert — Satyam Tex Fabb {date.today().isoformat()}"
-    rows_html = "".join(
-        [
-            "<tr>"
-            f"<td>{item['Part_Name']}</td>"
-            f"<td>{item['Category']}</td>"
-            f"<td>{item['Quantity']}</td>"
-            f"<td>{item['Reorder_Level']}</td>"
-            "</tr>"
-            for item in low_stock_items
-        ]
-    )
-    body_html = (
-        "<html><body>"
-        "<p>The following items are at or below reorder level:</p>"
-        "<table border='1' cellpadding='6' cellspacing='0'>"
-        "<tr><th>Part Name</th><th>Category</th><th>Current Stock</th><th>Reorder Level</th></tr>"
-        f"{rows_html}"
-        "</table>"
-        "</body></html>"
-    )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"⚠️ Low Stock Alert — Satyam Tex Fabb {date.today()}"
+        msg["From"] = sender_email
+        msg["To"] = admin_email
+        msg.attach(MIMEText(html, "html"))
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = admin_email
-    msg.attach(MIMEText(body_html, "html", "utf-8"))
-
-    try:
-        with smtplib.SMTP(host, port, timeout=30) as server:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
-            server.login(username, password)
-            server.sendmail(sender, [admin_email], msg.as_string())
-        return True, len(low_stock_items), "Low stock alert email sent."
-    except Exception as exc:
-        return False, 0, str(exc)
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, admin_email, msg.as_string())
+
+        return True, f"Alert sent for {len(low)} low stock items"
+
+    except Exception as e:
+        return False, str(e)

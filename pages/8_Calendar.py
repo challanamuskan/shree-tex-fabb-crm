@@ -243,12 +243,9 @@ if is_admin():
             st.error("Could not save auto-alert setting.")
 
     if st.button("📧 Send Low Stock Alert Now"):
-        ok, count, message = send_low_stock_email_alert()
+        ok, message = send_low_stock_email_alert()
         if ok:
-            if count > 0:
-                st.success(f"Low stock alert email sent for {count} items.")
-            else:
-                st.info(message)
+            st.success(f"✅ {message}")
         else:
             st.error(f"Failed to send low stock alert email: {message}")
 else:

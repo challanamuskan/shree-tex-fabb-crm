@@ -45,10 +45,6 @@ spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
 
-parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
-categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
-returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
-
 parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
 categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
 category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
@@ -92,7 +88,7 @@ with sale_tab:
                     target = sorted(rows, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)[0]
                     new_qty = to_int(target.get("Quantity", "0")) + int(qty)
                     update_record(
-                        parts_ws,
+                        get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
                         target["_row"],
                         PARTS_HEADERS,
                         {
@@ -113,7 +109,7 @@ with sale_tab:
                     )
 
                     append_record(
-                        returns_ws,
+                        get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS),
                         RETURNS_HEADERS,
                         {
                             "Date": return_date.isoformat(),
@@ -172,7 +168,7 @@ with purchase_tab:
                         st.error(f"Quantity returned exceeds stock ({current_qty}).")
                     else:
                         update_record(
-                            parts_ws,
+                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
                             target["_row"],
                             PARTS_HEADERS,
                             {
@@ -193,7 +189,7 @@ with purchase_tab:
                         )
 
                         append_record(
-                            returns_ws,
+                            get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS),
                             RETURNS_HEADERS,
                             {
                                 "Date": return_date.isoformat(),

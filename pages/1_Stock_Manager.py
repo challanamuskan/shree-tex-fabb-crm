@@ -76,13 +76,6 @@ spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
 
-parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
-categories_ws = get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS)
-price_history_ws = get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
-sales_ws = get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
-purchase_ws = get_or_create_worksheet(spreadsheet, PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
-returns_ws = get_or_create_worksheet(spreadsheet, RETURNS_TAB, RETURNS_HEADERS)
-
 parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
 categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
 price_history = fetch_sheet_data_by_name(PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
@@ -193,7 +186,7 @@ with st.form("add_category_form", clear_on_submit=True):
                 st.error("Category already exists.")
             else:
                 append_record(
-                    categories_ws,
+                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
                     CATEGORIES_HEADERS,
                     {
                         "Category_Name": category_name.strip(),
@@ -270,10 +263,19 @@ else:
 
                 if existing_row:
                     payload["Quantity"] = str(to_int(existing_row.get("Quantity", "0")) + int(quantity))
-                    update_record(parts_ws, existing_row["_row"], PARTS_HEADERS, payload)
+                    update_record(
+                        get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                        existing_row["_row"],
+                        PARTS_HEADERS,
+                        payload,
+                    )
                     st.success("Existing Part + Supplier updated with added quantity.")
                 else:
-                    append_record(parts_ws, PARTS_HEADERS, payload)
+                    append_record(
+                        get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                        PARTS_HEADERS,
+                        payload,
+                    )
                     st.success("Part added.")
                 st.rerun()
 
@@ -348,10 +350,14 @@ else:
                     "Product_Image": row.get("Product_Image", ""),
                     "Part_Documents": row.get("Part_Documents", ""),
                 }
-                update_record(parts_ws, row["_row"], PARTS_HEADERS, payload)
-
+                update_record(
+                    get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                    row["_row"],
+                    PARTS_HEADERS,
+                    payload,
+                )
             append_record(
-                price_history_ws,
+                get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS),
                 PRICE_HISTORY_HEADERS,
                 {
                     "Date": date.today().isoformat(),
@@ -443,6 +449,16 @@ st.markdown("---")
 st.subheader("🛠️ Admin Controls (Edit / Delete)")
 
 if check_admin_access():
+    if st.button("📧 Send Low Stock Alert Email Now"):
+        from utils.email_alerts import send_low_stock_email_alert
+
+        with st.spinner("Sending..."):
+            success, msg = send_low_stock_email_alert()
+        if success:
+            st.success(f"✅ {msg}")
+        else:
+            st.error(f"❌ {msg}")
+
     st.markdown("### 🔧 Fix Uncategorised Parts")
     uncategorised_rows = [
         r
@@ -477,7 +493,12 @@ if check_admin_access():
                         row_id = row.get("_row")
                         payload = {header: str(row.get(header, "") or "") for header in PARTS_HEADERS}
                         payload["Category"] = assignments.get(row_id, payload.get("Category", ""))
-                        update_record(parts_ws, row_id, PARTS_HEADERS, payload)
+                        update_record(
+                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                            row_id,
+                            PARTS_HEADERS,
+                            payload,
+                        )
                         updated += 1
                     st.success(f"Updated category for {updated} parts.")
                     st.session_state["show_uncategorised_fix"] = False
@@ -509,7 +530,7 @@ if check_admin_access():
         with cat_col1:
             if st.button("Update Category", key="admin_update_category"):
                 update_record(
-                    categories_ws,
+                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
                     selected_category_row["_row"],
                     CATEGORIES_HEADERS,
                     {
@@ -523,7 +544,10 @@ if check_admin_access():
 
         with cat_col2:
             if st.button("Delete Category", key="admin_delete_category"):
-                delete_record(categories_ws, selected_category_row["_row"])
+                delete_record(
+                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
+                    selected_category_row["_row"],
+                )
                 st.success("Category deleted from Categories sheet.")
                 st.rerun()
 
@@ -574,7 +598,7 @@ if check_admin_access():
                 if st.button("Save Part Changes", key="admin_update_part"):
                     for row in selected_part_rows:
                         update_record(
-                            parts_ws,
+                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
                             row["_row"],
                             PARTS_HEADERS,
                             {
@@ -598,7 +622,10 @@ if check_admin_access():
             with part_col2:
                 if st.button("Delete Part", key="admin_delete_part"):
                     for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
-                        delete_record(parts_ws, row["_row"])
+                        delete_record(
+                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                            row["_row"],
+                        )
                     st.success("Part deleted from stock records.")
                     st.rerun()
 else:
