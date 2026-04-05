@@ -145,9 +145,7 @@ def get_cached_data(tab_name):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_tab(tab_name):
-    from utils.ui import get_spreadsheet_connection
-
-    sh = get_spreadsheet_connection()
+    sh = get_all_worksheets()
     try:
         ws = sh.worksheet(tab_name)
     except gspread.WorksheetNotFound:
@@ -156,6 +154,15 @@ def fetch_tab(tab_name):
         else:
             raise
     return ws.get_all_records()
+
+
+@st.cache_resource
+def get_all_worksheets():
+    """Cache the spreadsheet connection and worksheet objects permanently."""
+    from utils.ui import get_spreadsheet_connection
+
+    sh = get_spreadsheet_connection()
+    return sh
 
 
 @st.cache_data(ttl=300, show_spinner=False)

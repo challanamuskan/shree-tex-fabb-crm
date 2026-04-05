@@ -11,19 +11,14 @@ if not is_logged_in():
     st.switch_page("pages/0_🔐_Login.py")
 
 from utils.constants import (
-    CONTACTS_HEADERS,
     CONTACTS_TAB,
-    EMAIL_LOG_HEADERS,
     EMAIL_LOG_TAB,
-    PARTS_HEADERS,
     PARTS_TAB,
-    PAYMENTS_HEADERS,
     PAYMENTS_TAB,
-    PURCHASE_ORDERS_HEADERS,
     PURCHASE_ORDERS_TAB,
 )
-from utils.email_alerts import get_low_stock_auto_alert_setting, send_low_stock_email_alert
-from utils.sheets_db import fetch_tab, get_or_create_worksheet
+from utils.email_alerts import send_low_stock_email_alert
+from utils.sheets_db import fetch_tab
 from utils.ui import get_spreadsheet_connection, init_page
 
 
@@ -57,6 +52,15 @@ def is_overdue(payment_record):
 def is_open_lead(contact_record):
     status = contact_record.get("Lead Status", "").strip().lower()
     return status not in {"closed", "converted", "won", "lost"}
+
+
+if "alert_sent_today" not in st.session_state:
+    st.session_state.alert_sent_today = False
+
+today = date.today()
+if today.day in [1, 15] and not st.session_state.alert_sent_today:
+    success, msg = send_low_stock_email_alert()
+    st.session_state.alert_sent_today = True
 
 
 init_page("Dashboard")
@@ -98,16 +102,6 @@ st.markdown("---")
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
-
-today_key = f"low_stock_auto_sent_{date.today().isoformat()}"
-if date.today().day in {1, 15} and get_low_stock_auto_alert_setting() and not st.session_state.get(today_key, False):
-    send_low_stock_email_alert()
-    st.session_state[today_key] = True
-
-parts_ws = get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS)
-contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
-pos_ws = get_or_create_worksheet(spreadsheet, PURCHASE_ORDERS_TAB, PURCHASE_ORDERS_HEADERS)
 
 parts = fetch_tab(PARTS_TAB)
 contacts = fetch_tab(CONTACTS_TAB)
@@ -209,7 +203,6 @@ with secondary_col:
 
 st.markdown("---")
 
-email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
 email_log = fetch_tab(EMAIL_LOG_TAB)
 
 if email_log:
