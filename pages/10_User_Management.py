@@ -11,6 +11,10 @@ from utils.auth import (
     update_password_hash,
 )
 
+if "username" not in st.session_state or not st.session_state.get("username"):
+    st.warning("Please login first.")
+    st.stop()
+
 require_login()
 require_admin()
 

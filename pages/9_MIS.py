@@ -372,7 +372,8 @@ elif section == "Admin Dashboard":
     st.subheader("Admin Performance Dashboard - Password Required")
 
     password_input = st.text_input("Enter Password", type="password", key="dashboard_pwd")
-    if password_input != "National1975":
+    dashboard_password = st.secrets.get("dashboard_password", "")
+    if password_input != dashboard_password:
         st.warning("Please enter the correct password to access the Dashboard.")
         st.stop()
 

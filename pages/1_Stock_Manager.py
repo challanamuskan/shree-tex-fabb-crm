@@ -5,6 +5,10 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+if "username" not in st.session_state or not st.session_state.get("username"):
+    st.warning("Please login first.")
+    st.stop()
+
 from utils.auth import is_admin, require_login
 from utils.constants import (
     CATEGORIES_HEADERS,
