@@ -90,6 +90,40 @@ sales_records = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADER
 purchase_records = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
 returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
 
+# Auto-sync: extract unique categories from Parts and ensure they exist in Categories sheet
+try:
+    parts_data = fetch_tab("Parts")
+    parts_df = pd.DataFrame(parts_data)
+    if "Category" in parts_df.columns:
+        unique_cats_from_parts = set(
+            parts_df["Category"]
+            .replace(["", "nan", "None", "NaN"], pd.NA)
+            .dropna()
+            .str.strip()
+            .unique()
+        )
+
+        # Get existing categories from Categories sheet
+        cats_data = fetch_tab("Categories")
+        cats_df = pd.DataFrame(cats_data)
+        existing_cats = (
+            set(cats_df["Category_Name"].str.strip().tolist())
+            if "Category_Name" in cats_df.columns and not cats_df.empty
+            else set()
+        )
+
+        # Find categories in Parts but not in Categories sheet
+        missing_cats = unique_cats_from_parts - existing_cats
+
+        if missing_cats:
+            sh = get_spreadsheet_connection()
+            cat_ws = sh.worksheet("Categories")
+            new_rows = [[cat, "", str(date.today())] for cat in sorted(missing_cats)]
+            cat_ws.append_rows(new_rows, value_input_option="USER_ENTERED")
+            st.cache_data.clear()
+except Exception:
+    pass  # Silent fail — don't crash the page if sync fails
+
 st.subheader("Current Stock")
 try:
     parts_tab_records = fetch_tab("Parts")
@@ -114,11 +148,15 @@ col2.metric("Total Parts", len(df))
 col3.metric("Total Stock Units", df["Quantity"].apply(lambda x: int(x) if str(x).isdigit() else 0).sum())
 
 for cat in categories_list:
+    cat_clean = str(cat).strip()
+    if cat_clean in ["", "nan", "None", "NaN"] or cat_clean.startswith("—") or cat_clean.startswith("-"):
+        continue  # skip junk categories
+
     cat_parts = df[df["Category"] == cat].copy()
     for col in ["Part_Name", "Quantity", "Unit_Sale_Price", "Supplier_Name"]:
         if col not in cat_parts.columns:
             cat_parts[col] = ""
-    with st.expander(f"{cat} ({len(cat_parts)} parts)", expanded=False):
+    with st.expander(f"{cat_clean} ({len(cat_parts)} parts)", expanded=False):
         st.dataframe(
             cat_parts[["Part_Name", "Quantity", "Unit_Sale_Price", "Supplier_Name"]],
             use_container_width=True,

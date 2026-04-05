@@ -138,21 +138,45 @@ primary_col, secondary_col = st.columns(2)
 
 with primary_col:
     st.markdown("### 📦 Low Stock Parts")
-    if low_stock_parts:
-        low_df = pd.DataFrame(low_stock_parts)[
-            ["Part_Number", "Part_Name", "Quantity", "Reorder_Level", "Supplier_Name"]
-        ]
-        low_df = low_df.rename(
-            columns={
-                "Part_Number": "Part Number",
-                "Part_Name": "Part Name",
-                "Reorder_Level": "Reorder Level",
-                "Supplier_Name": "Supplier Name",
-            }
-        )
-        st.dataframe(low_df, use_container_width=True, hide_index=True)
-    else:
-        st.success("No low stock alerts.")
+    try:
+        all_parts = fetch_tab("Parts")
+        if all_parts:
+            parts_df = pd.DataFrame(all_parts)
+
+            # Only calculate low stock if both columns exist and have numeric values
+            if "Quantity" in parts_df.columns and "Reorder_Level" in parts_df.columns:
+                def safe_int(val):
+                    try:
+                        return int(float(str(val).strip()))
+                    except:
+                        return 0
+
+                parts_df["_qty"] = parts_df["Quantity"].apply(safe_int)
+                parts_df["_reorder"] = parts_df["Reorder_Level"].apply(safe_int)
+
+                # Only flag as low stock if Reorder_Level is actually set (> 0)
+                low_df = parts_df[
+                    (parts_df["_reorder"] > 0)
+                    & (parts_df["_qty"] <= parts_df["_reorder"])
+                ]
+
+                if low_df.empty:
+                    st.info("✅ No low stock alerts — all parts are above reorder levels.")
+                else:
+                    for col in ["Category", "Part_Name", "Quantity", "Reorder_Level"]:
+                        if col not in low_df.columns:
+                            low_df[col] = ""
+                    st.dataframe(
+                        low_df[["Category", "Part_Name", "Quantity", "Reorder_Level"]],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            else:
+                st.info("✅ No reorder levels configured yet. Set them in Stock Manager to enable alerts.")
+        else:
+            st.info("No parts data found.")
+    except Exception:
+        st.info("✅ Low stock data unavailable — will display once reorder levels are configured.")
 
     st.markdown("### 👥 Open Leads")
     if open_leads:
