@@ -1,6 +1,10 @@
 import streamlit as st
 from utils.auth import require_login, is_admin, hash_password, verify_login, update_password_hash, logout
 
+if "username" not in st.session_state or not st.session_state.get("username"):
+    st.warning("Please login first.")
+    st.stop()
+
 require_login()
 
 st.set_page_config(

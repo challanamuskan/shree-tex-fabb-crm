@@ -1,7 +1,6 @@
 .streamlit/secrets.toml
-textile-part-crm-24280a22d7d9.json
-gmail_credentials.json
-token.json
 __pycache__/
 *.pyc
 .env
+.venv/
+*.json

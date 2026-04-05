@@ -75,6 +75,11 @@ def init_page(title):
         st.set_page_config(page_title=title, page_icon="⚙️", layout="wide")
     except:
         pass
+
+    if "username" not in st.session_state or not st.session_state.get("username"):
+        st.warning("Please login first.")
+        st.stop()
+
     inject_global_css()
 
 
