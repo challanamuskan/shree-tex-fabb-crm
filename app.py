@@ -18,8 +18,8 @@ from utils.constants import (
     PURCHASE_ORDERS_TAB,
 )
 from utils.email_alerts import send_low_stock_email_alert
-from utils.sheets_db import fetch_tab
-from utils.ui import get_spreadsheet_connection, init_page
+from utils.supabase_db import fetch_tab, get_dashboard_stats, get_email_log
+from utils.ui import init_page
 
 
 def to_int(value):
@@ -99,10 +99,7 @@ greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "
 st.markdown(f"<p style='color: #6B7280; font-size: 16px;'>{greeting}! Here's your business overview for <strong>{today}</strong></p>", unsafe_allow_html=True)
 st.markdown("---")
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
-
+stats = get_dashboard_stats()
 parts = fetch_tab(PARTS_TAB)
 contacts = fetch_tab(CONTACTS_TAB)
 payments = fetch_tab(PAYMENTS_TAB)
@@ -121,10 +118,10 @@ open_leads = [contact for contact in contacts if is_open_lead(contact)]
 pending_amount = sum(to_float(payment.get("Amount", 0)) for payment in pending_payments)
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("📦 Total Parts", len(parts))
-m2.metric("⚠️ Low Stock Alerts", len(low_stock_parts))
+m1.metric("📦 Total Parts", stats.get("total_parts", len(parts)))
+m2.metric("⚠️ Low Stock Alerts", stats.get("low_stock", len(low_stock_parts)))
 m3.metric("💰 Pending Payments", len(pending_payments), f"Rs {pending_amount:,.2f}")
-m4.metric("👥 Open Leads", len(open_leads))
+m4.metric("👥 Open Leads", stats.get("open_leads", len(open_leads)))
 
 st.markdown("---")
 
@@ -203,7 +200,7 @@ with secondary_col:
 
 st.markdown("---")
 
-email_log = fetch_tab(EMAIL_LOG_TAB)
+email_log = get_email_log() or fetch_tab(EMAIL_LOG_TAB)
 
 if email_log:
     st.markdown("### 📧 Recent Email Activity")

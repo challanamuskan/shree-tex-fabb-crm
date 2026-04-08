@@ -142,7 +142,7 @@ categories_list = sorted(df["Category"].unique().tolist()) if not df.empty else 
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Categories", len(categories_list))
 col2.metric("Total Parts", len(df))
-col3.metric("Total Stock Units", df["Quantity"].apply(lambda x: int(x) if str(x).isdigit() else 0).sum())
+col3.metric("Total Stock Units", pd.to_numeric(df["Quantity"], errors="coerce").fillna(0).astype(int).sum())
 
 for cat in categories_list:
     cat_clean = str(cat).strip()

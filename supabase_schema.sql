@@ -13,6 +13,14 @@ CREATE TABLE IF NOT EXISTS parts (
     price_type TEXT,
     box_number TEXT,
     supplier_name TEXT,
+    part_number TEXT,
+    supplier_phone TEXT,
+    supplier_email TEXT,
+    reorder_level TEXT,
+    unit_purchase_price TEXT,
+    purchase_date TEXT,
+    product_image TEXT,
+    part_documents TEXT,
     image TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -148,12 +156,15 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS returns (
     id SERIAL PRIMARY KEY,
     date TEXT,
+    type TEXT,
     part_name TEXT,
     category TEXT,
-    quantity_returned TEXT,
+    supplier_name TEXT,
+    quantity TEXT,
+    invoice_number TEXT,
+    party_supplier_name TEXT,
     reason TEXT,
-    customer_name TEXT,
-    notes TEXT,
+    return_documents TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -161,7 +172,11 @@ CREATE TABLE IF NOT EXISTS daily_reports (
     id SERIAL PRIMARY KEY,
     date TEXT,
     employee_name TEXT,
-    report TEXT,
+    tasks_completed TEXT,
+    orders_dispatched TEXT,
+    payments_collected TEXT,
+    expenses_incurred TEXT,
+    issues_remarks TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -169,9 +184,19 @@ CREATE TABLE IF NOT EXISTS attendance (
     id SERIAL PRIMARY KEY,
     date TEXT,
     employee_name TEXT,
+    time_in TEXT,
+    time_out TEXT,
+    total_hours TEXT,
     status TEXT,
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    id SERIAL PRIMARY KEY,
+    key TEXT UNIQUE,
+    value TEXT,
+    updated_at TEXT
 );
 
 -- Enable Row Level Security (basic protection)
@@ -196,3 +221,4 @@ CREATE POLICY "Allow all for anon" ON users FOR ALL USING (true);
 CREATE POLICY "Allow all for anon" ON returns FOR ALL USING (true);
 CREATE POLICY "Allow all for anon" ON daily_reports FOR ALL USING (true);
 CREATE POLICY "Allow all for anon" ON attendance FOR ALL USING (true);
+CREATE POLICY "Allow all for anon" ON settings FOR ALL USING (true);

@@ -1,40 +1,15 @@
 import hashlib
-import secrets
-import datetime
-import json
-from pathlib import Path
-
-import gspread
 import streamlit as st
-from oauth2client.service_account import ServiceAccountCredentials
+from utils.supabase_db import (
+    add_user as supabase_add_user,
+    delete_user as supabase_delete_user,
+    get_all_users as supabase_get_all_users,
+    get_user,
+    update_user_password,
+)
 
 ADMIN_ROLE = "admin"
 EMPLOYEE_ROLE = "employee"
-
-
-def get_credentials():
-    import streamlit as st
-    from oauth2client.service_account import ServiceAccountCredentials
-    import json, tempfile, os
-    from pathlib import Path
-
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-    # Try Streamlit secrets first (cloud deployment)
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds_dict["type"] = "service_account"
-            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-            json.dump(creds_dict, tmp)
-            tmp.flush()
-            return ServiceAccountCredentials.from_json_keyfile_name(tmp.name, scope)
-    except Exception:
-        pass
-
-    # Fall back to local file
-    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
-    return ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
 
 
 def hash_password(password: str) -> str:
@@ -42,67 +17,21 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def load_sheet_id():
-    """Load the Google Sheet ID from crm_config.json"""
-    config_path = Path(__file__).resolve().parent.parent / ".streamlit" / "crm_config.json"
-    if config_path.exists():
-        with open(config_path) as f:
-            return json.load(f).get("sheet_id", "")
-    return ""
-
-
-def get_users_sheet():
-    """Get or create the Users sheet in Google Sheets."""
-    creds = get_credentials()
-    client = gspread.authorize(creds)
-    sheet_id = load_sheet_id()
-    if not sheet_id:
-        st.error("Sheet ID not found in crm_config.json")
-        st.stop()
-    spreadsheet = client.open_by_key(sheet_id)
-
-    try:
-        return spreadsheet.worksheet("Users")
-    except gspread.WorksheetNotFound:
-        ws = spreadsheet.add_worksheet("Users", 100, 10)
-        ws.append_row([
-            "Username",
-            "Password_Hash",
-            "Role",
-            "Full_Name",
-            "Email",
-            "Must_Change_Password",
-            "Created_At",
-        ])
-        # Create default admin account
-        ws.append_row([
-            "7637956",
-            hash_password("dywoftuvrm@Z"),
-            "admin",
-            "Admin",
-            "",
-            "False",
-            str(datetime.datetime.now()),
-        ])
-        return ws
-
-
 def verify_login(username: str, password: str):
     """Verify login credentials and return user info if valid."""
     try:
-        ws = get_users_sheet()
-        records = ws.get_all_records()
-        for row in records:
-            if str(row["Username"]).strip() == str(username).strip() and row["Password_Hash"] == hash_password(
-                password
-            ):
-                return {
-                    "username": username,
-                    "role": row["Role"],
-                    "full_name": row["Full_Name"],
-                    "email": row["Email"],
-                    "must_change": str(row["Must_Change_Password"]).lower() == "true",
-                }
+        row = get_user(username)
+        if row and row.get("password_hash") == hash_password(password):
+            must_change = row.get("must_change_password", False)
+            if isinstance(must_change, str):
+                must_change = must_change.strip().lower() in {"true", "1", "yes", "on"}
+            return {
+                "username": username,
+                "role": row.get("role", ""),
+                "full_name": row.get("full_name", ""),
+                "email": row.get("email", ""),
+                "must_change": bool(must_change),
+            }
         return None
     except Exception as e:
         st.error(f"Login error: {e}")
@@ -140,44 +69,35 @@ def logout():
 
 
 def update_password_hash(username: str, new_password_hash: str):
-    """Update a user's password hash in the Users sheet."""
+    """Update a user's password hash in Supabase."""
     try:
-        ws = get_users_sheet()
-        records = ws.get_all_records()
-        for idx, row in enumerate(records, start=2):  # Start at 2 because row 1 is header
-            if str(row["Username"]).strip() == str(username).strip():
-                ws.update_cell(idx, 2, new_password_hash)  # Column 2 is Password_Hash
-                return True
-        return False
+        update_user_password(username, new_password_hash)
+        return True
     except Exception as e:
         st.error(f"Error updating password: {e}")
         return False
 
 
 def get_all_users():
-    """Get all users from the Users sheet."""
+    """Get all users from Supabase."""
     try:
-        ws = get_users_sheet()
-        records = ws.get_all_records()
-        return records
+        return supabase_get_all_users()
     except Exception as e:
         st.error(f"Error fetching users: {e}")
         return []
 
 
 def add_user(username: str, password_hash: str, role: str, full_name: str, email: str):
-    """Add a new user to the Users sheet."""
+    """Add a new user to Supabase."""
     try:
-        ws = get_users_sheet()
-        ws.append_row([
-            username,
-            password_hash,
-            role,
-            full_name,
-            email,
-            "False",
-            str(datetime.datetime.now()),
-        ])
+        supabase_add_user({
+            "username": username,
+            "password_hash": password_hash,
+            "role": role,
+            "full_name": full_name,
+            "email": email,
+            "must_change_password": False,
+        })
         return True
     except Exception as e:
         st.error(f"Error adding user: {e}")
@@ -185,15 +105,26 @@ def add_user(username: str, password_hash: str, role: str, full_name: str, email
 
 
 def remove_user(username: str):
-    """Remove a user from the Users sheet."""
+    """Remove a user from Supabase."""
     try:
-        ws = get_users_sheet()
-        records = ws.get_all_records()
-        for idx, row in enumerate(records, start=2):
-            if str(row["Username"]).strip() == str(username).strip():
-                ws.delete_rows(idx)
-                return True
-        return False
+        supabase_delete_user(username)
+        return True
     except Exception as e:
         st.error(f"Error removing user: {e}")
         return False
+
+
+def verify_default_admin_exists():
+    row = get_user("7637956")
+    if row is None:
+        supabase_add_user({
+            "username": "7637956",
+            "password_hash": hash_password(st.secrets.get("DEFAULT_ADMIN_PASSWORD", "changeme123")),
+            "role": "admin",
+            "full_name": "Admin",
+            "email": "",
+            "must_change_password": False,
+        })
+
+
+verify_default_admin_exists()

@@ -1,36 +1,11 @@
 import json
 from pathlib import Path
 
-import gspread
 import streamlit as st
-from oauth2client.service_account import ServiceAccountCredentials
+
+from utils.supabase_db import SupabaseSpreadsheetAdapter
 
 CONFIG_FILE = Path(__file__).resolve().parent.parent / ".streamlit" / "crm_config.json"
-
-
-def get_credentials():
-    import streamlit as st
-    from oauth2client.service_account import ServiceAccountCredentials
-    import json, tempfile, os
-    from pathlib import Path
-
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-    # Try Streamlit secrets first (cloud deployment)
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds_dict["type"] = "service_account"
-            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-            json.dump(creds_dict, tmp)
-            tmp.flush()
-            return ServiceAccountCredentials.from_json_keyfile_name(tmp.name, scope)
-    except Exception:
-        pass
-
-    # Fall back to local file
-    creds_path = Path(__file__).resolve().parent.parent / "textile-part-crm-24280a22d7d9.json"
-    return ServiceAccountCredentials.from_json_keyfile_name(str(creds_path), scope)
 
 
 def save_sheet_id(sheet_id: str):
@@ -116,21 +91,6 @@ def get_spreadsheet_connection():
     if existing_spreadsheet is not None:
         return existing_spreadsheet
 
-    saved_id = load_sheet_id()
-    with st.sidebar:
-        st.markdown("---")
-        sheet_id = st.text_input("Google Sheet ID", value=saved_id, key="sheet_id_input")
-        if st.button("Connect") or saved_id:
-            if sheet_id:
-                try:
-                    creds = get_credentials()
-                    client = gspread.authorize(creds)
-                    spreadsheet = client.open_by_key(sheet_id)
-                    save_sheet_id(sheet_id)
-                    st.session_state["spreadsheet_obj"] = spreadsheet
-                    st.sidebar.success("✅ Connected")
-                    return spreadsheet
-                except Exception as e:
-                    st.sidebar.error(f"Connection failed: {e}")
-                    return None
-    return None
+    adapter = SupabaseSpreadsheetAdapter()
+    st.session_state["spreadsheet_obj"] = adapter
+    return adapter
