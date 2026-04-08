@@ -7,7 +7,7 @@ from utils.auth import require_login, is_admin
 require_login()
 
 from utils.constants import PAYMENTS_HEADERS, PAYMENTS_TAB
-from utils.sheets_db import (
+from utils.supabase_db import (
     append_record,
     delete_record,
     fetch_sheet_data_by_name,

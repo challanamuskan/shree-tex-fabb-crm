@@ -20,7 +20,7 @@ from utils.email_alerts import (
     send_low_stock_email_alert,
     set_low_stock_auto_alert_setting,
 )
-from utils.sheets_db import fetch_sheet_data_by_name, get_or_create_worksheet
+from utils.supabase_db import fetch_sheet_data_by_name, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 

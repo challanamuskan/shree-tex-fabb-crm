@@ -25,7 +25,7 @@ from utils.constants import (
     SALES_RECORDS_TAB,
 )
 from utils.file_handler import base64_to_image, image_to_base64
-from utils.sheets_db import (
+from utils.supabase_db import (
     append_record,
     delete_record,
     fetch_tab,
@@ -89,7 +89,7 @@ returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
 
 # Auto-sync: extract unique categories from Parts and ensure they exist in Categories sheet
 try:
-    parts_data = fetch_tab("Parts")
+    parts_data = fetch_table("parts")
     parts_df = pd.DataFrame(parts_data)
     if "Category" in parts_df.columns:
         unique_cats_from_parts = set(
@@ -101,7 +101,7 @@ try:
         )
 
         # Get existing categories from Categories sheet
-        cats_data = fetch_tab("Categories")
+        cats_data = fetch_table("categories")
         cats_df = pd.DataFrame(cats_data)
         existing_cats = (
             set(cats_df["Category_Name"].str.strip().tolist())
@@ -123,7 +123,7 @@ except Exception:
 
 st.subheader("Current Stock")
 try:
-    parts_tab_records = fetch_tab("Parts")
+    parts_tab_records = fetch_table("parts")
 except Exception:
     parts_tab_records = fetch_tab(PARTS_TAB)
 

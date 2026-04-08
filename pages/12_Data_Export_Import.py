@@ -27,7 +27,7 @@ from utils.constants import (
     SALES_RECORDS_HEADERS,
     SALES_RECORDS_TAB,
 )
-from utils.sheets_db import bulk_append_records, fetch_sheet_data_by_name, fetch_tab, get_or_create_worksheet
+from utils.supabase_db import bulk_append_records, fetch_sheet_data_by_name, fetch_tab, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()

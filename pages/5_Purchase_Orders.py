@@ -16,7 +16,7 @@ from utils.constants import (
 )
 from utils.file_handler import upload_and_scan_widget
 from utils.gmail_sender import get_gmail_service, send_email
-from utils.sheets_db import append_record, delete_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
+from utils.supabase_db import append_record, delete_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
