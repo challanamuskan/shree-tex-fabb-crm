@@ -87,10 +87,9 @@ def set_low_stock_auto_alert_setting(enabled):
 
 def send_low_stock_email_alert():
     try:
-        from utils.supabase_db import fetch_tab
         import pandas as pd
 
-        parts = fetch_table("parts")
+        parts = fetch_tab("parts")
         if not parts:
             return False, "No parts data"
 

@@ -3,7 +3,6 @@ import csv
 import time
 from datetime import date
 
-from gspread.exceptions import APIError
 import pandas as pd
 import streamlit as st
 from openpyxl import Workbook
