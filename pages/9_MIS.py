@@ -16,7 +16,7 @@ from utils.constants import (
     EMPLOYEE_TASKS_HEADERS,
     EMPLOYEE_TASKS_TAB,
 )
-from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
+from utils.supabase_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 

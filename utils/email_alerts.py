@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 import streamlit as st
 
 from utils.constants import PARTS_TAB, SETTINGS_HEADERS, SETTINGS_TAB
-from utils.sheets_db import fetch_tab, get_or_create_worksheet
+from utils.supabase_db import fetch_tab, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection
 
 
@@ -87,10 +87,10 @@ def set_low_stock_auto_alert_setting(enabled):
 
 def send_low_stock_email_alert():
     try:
-        from utils.sheets_db import fetch_tab
+        from utils.supabase_db import fetch_tab
         import pandas as pd
 
-        parts = fetch_tab("Parts")
+        parts = fetch_table("parts")
         if not parts:
             return False, "No parts data"
 

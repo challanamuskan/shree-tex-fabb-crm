@@ -7,7 +7,7 @@ import streamlit as st
 
 from utils.auth import require_login
 from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, SALES_RECORDS_HEADERS, SALES_RECORDS_TAB
-from utils.sheets_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
+from utils.supabase_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
 from utils.ui import get_spreadsheet_connection, init_page
 
 require_login()
