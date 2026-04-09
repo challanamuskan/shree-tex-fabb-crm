@@ -6,19 +6,9 @@ import streamlit as st
 from utils.auth import require_login, is_admin
 require_login()
 
-from utils.constants import PAYMENTS_HEADERS, PAYMENTS_TAB
-from utils.supabase_db import (
-    append_record,
-    delete_record,
-    fetch_sheet_data_by_name,
-    get_or_create_worksheet,
-    update_record,
-)
+from utils.supabase_db import fetch_table, insert_record, update_record, delete_record
 from utils.file_handler import upload_and_scan_widget
-from utils.ui import (
-    get_spreadsheet_connection,
-    init_page,
-)
+from utils.ui import init_page
 
 STATUS_OPTIONS = ["Paid", "Pending", "Overdue"]
 
@@ -61,24 +51,28 @@ def parse_scanned_date(value):
 
 
 def is_overdue(record):
-    due = parse_date(record.get("Due Date", ""))
-    status = record.get("Status", "").strip().lower()
+    due = parse_date(record.get("due_date", ""))
+    status = str(record.get("status", "")).strip().lower()
     return due < date.today() and status != "paid"
 
 
 init_page("Payments")
 st.title("Payments")
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
-
-worksheet = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
-records = fetch_sheet_data_by_name(PAYMENTS_TAB, PAYMENTS_HEADERS)
+records = fetch_table("payments")
 
 st.subheader("Payment Dues")
 if records:
-    df = pd.DataFrame(records).drop(columns=["_row", "Receipt_Document"], errors="ignore")
+    df = pd.DataFrame(records).drop(columns=["receipt_document"], errors="ignore")
+    df = df.rename(
+        columns={
+            "customer_name": "Customer Name",
+            "invoice_number": "Invoice Number",
+            "amount": "Amount",
+            "due_date": "Due Date",
+            "status": "Status",
+        }
+    )
 
     def highlight_overdue(row):
         record = row.to_dict()
@@ -93,9 +87,9 @@ if records:
 
     overdue_count = sum(1 for r in records if is_overdue(r))
     pending_amount = sum(
-        to_float(r.get("Amount", "0"))
+        to_float(r.get("amount", "0"))
         for r in records
-        if r.get("Status", "").strip().lower() != "paid"
+        if str(r.get("status", "")).strip().lower() != "paid"
     )
     st.caption(f"Pending amount: Rs {pending_amount:,.2f} | Overdue invoices: {overdue_count}")
 else:
@@ -127,15 +121,15 @@ with st.form("add_payment_form", clear_on_submit=True):
                 effective_status = "Overdue"
 
             payload = {
-                "Customer Name": customer_name.strip(),
-                "Invoice Number": invoice_number.strip(),
-                "Amount": f"{float(amount):.2f}",
-                "Due Date": due_date.isoformat(),
-                "Status": effective_status,
-                "Receipt_Document": bill_b64,
+                "customer_name": customer_name.strip(),
+                "invoice_number": invoice_number.strip(),
+                "amount": f"{float(amount):.2f}",
+                "due_date": due_date.isoformat(),
+                "status": effective_status,
+                "receipt_document": bill_b64,
             }
             try:
-                append_record(worksheet, PAYMENTS_HEADERS, payload)
+                insert_record("payments", payload)
                 st.success("Payment record added successfully.")
                 st.rerun()
             except Exception as exc:
@@ -146,7 +140,7 @@ st.subheader("Edit / Delete Payment")
 if records:
     if is_admin():
         option_map = {
-            f"{r['Invoice Number']} | {r['Customer Name']}": r
+            f"{r.get('invoice_number', '')} | {r.get('customer_name', '')}": r
             for r in records
         }
         selected_key = st.selectbox("Select payment", options=list(option_map.keys()))
@@ -155,18 +149,18 @@ if records:
         with st.form("edit_payment_form"):
             c1, c2 = st.columns(2)
             with c1:
-                e_customer_name = st.text_input("Customer Name", value=selected["Customer Name"])
-                e_invoice_number = st.text_input("Invoice Number", value=selected["Invoice Number"])
+                e_customer_name = st.text_input("Customer Name", value=selected.get("customer_name", ""))
+                e_invoice_number = st.text_input("Invoice Number", value=selected.get("invoice_number", ""))
                 e_amount = st.number_input(
                     "Amount",
                     min_value=0.0,
                     step=0.01,
                     format="%.2f",
-                    value=to_float(selected["Amount"]),
+                    value=to_float(selected.get("amount", "0")),
                 )
             with c2:
-                e_due_date = st.date_input("Due Date", value=parse_date(selected["Due Date"]))
-                existing_status = selected["Status"] if selected["Status"] in STATUS_OPTIONS else "Pending"
+                e_due_date = st.date_input("Due Date", value=parse_date(selected.get("due_date", "")))
+                existing_status = selected.get("status", "Pending") if selected.get("status", "Pending") in STATUS_OPTIONS else "Pending"
                 e_status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(existing_status))
 
             update_submit = st.form_submit_button("Update Payment")
@@ -179,15 +173,15 @@ if records:
                         effective_status = "Overdue"
 
                     payload = {
-                        "Customer Name": e_customer_name.strip(),
-                        "Invoice Number": e_invoice_number.strip(),
-                        "Amount": f"{float(e_amount):.2f}",
-                        "Due Date": e_due_date.isoformat(),
-                        "Status": effective_status,
-                        "Receipt_Document": selected.get("Receipt_Document", ""),
+                        "customer_name": e_customer_name.strip(),
+                        "invoice_number": e_invoice_number.strip(),
+                        "amount": f"{float(e_amount):.2f}",
+                        "due_date": e_due_date.isoformat(),
+                        "status": effective_status,
+                        "receipt_document": selected.get("receipt_document", ""),
                     }
                     try:
-                        update_record(worksheet, selected["_row"], PAYMENTS_HEADERS, payload)
+                        update_record("payments", payload, "id", selected.get("id"))
                         st.success("Payment updated successfully.")
                         st.rerun()
                     except Exception as exc:
@@ -199,7 +193,7 @@ if records:
                 st.error("Please confirm deletion first.")
             else:
                 try:
-                    delete_record(worksheet, selected["_row"])
+                    delete_record("payments", "id", selected.get("id"))
                     st.success("Payment deleted successfully.")
                     st.rerun()
                 except Exception as exc:

@@ -163,6 +163,7 @@ def fetch_table(table_name):
 
 
 def insert_record(table_name, record_dict):
+    fetch_table.clear()
     try:
         sb = get_supabase()
         clean = {k: _clean_value(v) for k, v in record_dict.items() if k != "_row"}
@@ -173,6 +174,7 @@ def insert_record(table_name, record_dict):
 
 
 def update_record(table_name, record_dict, match_column, match_value):
+    fetch_table.clear()
     try:
         sb = get_supabase()
         clean = {k: _clean_value(v) for k, v in record_dict.items() if k != "_row"}
@@ -183,6 +185,8 @@ def update_record(table_name, record_dict, match_column, match_value):
 
 
 def delete_record(table_name, match_column, match_value=None):
+    fetch_table.clear()
+    fetch_table.clear()
     try:
         sb = get_supabase()
         query = sb.table(_resolve_table_name(table_name)).delete()

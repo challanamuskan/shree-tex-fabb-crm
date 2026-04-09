@@ -526,7 +526,7 @@ if check_admin_access():
         selected_category_row = category_map[selected_category_name]
         edited_description = st.text_input(
             "Category Description",
-            value=selected_category_row.get("Description", "").strip(),
+            value=(selected_category_row.get("Description") or "").strip(),
             key="admin_category_description",
         )
 
