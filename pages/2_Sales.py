@@ -6,13 +6,12 @@ import pandas as pd
 import streamlit as st
 
 from utils.auth import require_login
-from utils.constants import CATEGORIES_HEADERS, CATEGORIES_TAB, PARTS_HEADERS, PARTS_TAB, SALES_RECORDS_HEADERS, SALES_RECORDS_TAB
-from utils.supabase_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet, update_record
-from utils.ui import get_spreadsheet_connection, init_page
+from utils.supabase_db import delete_record, fetch_table, insert_record, update_record
+from utils.ui import init_page
 
 require_login()
 init_page("Sales Records")
-st.title("💰 Sales Records")
+st.title("Sales Records")
 
 
 def to_int(value):
@@ -42,43 +41,40 @@ def files_to_json(uploaded_files):
     return json.dumps(data, ensure_ascii=True)
 
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
+parts = fetch_table("parts")
+categories = fetch_table("categories")
+sales = fetch_table("sales_records")
 
-parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
-categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
-sales = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
-category_names = sorted({p.get("Category_Name", "").strip() for p in categories if p.get("Category_Name", "").strip()})
+category_names = sorted({str(c.get("category_name", "")).strip() for c in categories if str(c.get("category_name", "")).strip()})
 if not category_names:
-    category_names = sorted({p.get("Category", "").strip() or "Uncategorised" for p in parts})
+    category_names = sorted({str(p.get("category", "")).strip() or "uncategorised" for p in parts})
 
-st.subheader("Section A - Record New Sale")
+st.subheader("Record New Sale")
 if not parts:
     st.info("No parts found in stock.")
 else:
     with st.form("record_sale_form", clear_on_submit=True):
         selected_category = st.selectbox("Select Category", options=category_names, key="sale_category")
-        category_rows = [p for p in parts if (p.get("Category", "").strip() or "Uncategorised") == selected_category]
-        part_names = sorted({p.get("Part_Name", "").strip() for p in category_rows if p.get("Part_Name", "").strip()})
+        category_rows = [p for p in parts if (str(p.get("category", "")).strip() or "uncategorised") == selected_category]
+        part_names = sorted({str(p.get("part_name", "")).strip() for p in category_rows if str(p.get("part_name", "")).strip()})
+
         if not part_names:
             st.info("No parts found in the selected category.")
             st.form_submit_button("Record Sale", disabled=True)
         else:
             selected_part = st.selectbox("Select Part", options=part_names, key="sale_part")
-
-            matching_rows = [p for p in category_rows if p.get("Part_Name", "").strip() == selected_part]
-            total_stock = sum(to_int(r.get("Quantity", "0")) for r in matching_rows)
+            matching_rows = [p for p in category_rows if str(p.get("part_name", "")).strip() == selected_part]
+            total_stock = sum(to_int(r.get("quantity", "0")) for r in matching_rows)
             st.caption(f"Available stock: {total_stock}")
 
-            supplier_options = sorted({r.get("Supplier_Name", "").strip() for r in matching_rows if r.get("Supplier_Name", "").strip()})
+            supplier_options = sorted({str(r.get("supplier_name", "")).strip() for r in matching_rows if str(r.get("supplier_name", "")).strip()})
             supplier_choice = st.selectbox("Supplier", options=["Any"] + supplier_options)
 
             qty_sold = st.number_input("Quantity Sold", min_value=1, step=1, value=1)
             sale_invoice = st.text_input("Sale Invoice Number")
             party_name = st.text_input("Party Name")
             sale_date = st.date_input("Sale Date", value=date.today())
-            default_sale_price = to_float(matching_rows[0].get("Unit_Sale_Price", "0")) if matching_rows else 0.0
+            default_sale_price = to_float(matching_rows[0].get("unit_sale_price", "0")) if matching_rows else 0.0
             sale_price = st.number_input("Sale Price Per Unit", min_value=0.0, step=0.01, value=default_sale_price, format="%.2f")
             sale_bills = st.file_uploader(
                 "Upload Sale Bill (optional)",
@@ -95,14 +91,14 @@ else:
                     st.error("Sale Invoice Number and Party Name are required.")
                 else:
                     remaining = int(qty_sold)
-                    rows_to_update = []
-                    rows_scope = matching_rows if supplier_choice == "Any" else [r for r in matching_rows if r.get("Supplier_Name", "").strip() == supplier_choice]
-                    rows_scope = sorted(rows_scope, key=lambda r: to_int(r.get("Quantity", "0")), reverse=True)
+                    rows_scope = matching_rows if supplier_choice == "Any" else [r for r in matching_rows if str(r.get("supplier_name", "")).strip() == supplier_choice]
+                    rows_scope = sorted(rows_scope, key=lambda r: to_int(r.get("quantity", "0")), reverse=True)
 
+                    rows_to_update = []
                     for row in rows_scope:
                         if remaining <= 0:
                             break
-                        available = to_int(row.get("Quantity", "0"))
+                        available = to_int(row.get("quantity", "0"))
                         take = min(available, remaining)
                         if take <= 0:
                             continue
@@ -113,57 +109,36 @@ else:
                         st.error("Not enough stock in selected supplier scope.")
                     else:
                         for row, new_qty in rows_to_update:
-                            payload = {
-                                "Part_Name": row.get("Part_Name", "").strip(),
-                                "Part_Number": row.get("Part_Number", "").strip(),
-                                "Category": row.get("Category", "").strip(),
-                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
-                                "Supplier_Phone": row.get("Supplier_Phone", "").strip(),
-                                "Supplier_Email": row.get("Supplier_Email", "").strip(),
-                                "Quantity": str(new_qty),
-                                "Reorder_Level": str(to_int(row.get("Reorder_Level", "0"))),
-                                "Unit_Purchase_Price": f"{to_float(row.get('Unit_Purchase_Price', '0')):.2f}",
-                                "Unit_Sale_Price": f"{to_float(row.get('Unit_Sale_Price', '0')):.2f}",
-                                "Purchase_Date": row.get("Purchase_Date", "").strip(),
-                                "Product_Image": row.get("Product_Image", ""),
-                                "Part_Documents": row.get("Part_Documents", ""),
-                            }
-                            update_record(
-                                get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
-                                row["_row"],
-                                PARTS_HEADERS,
-                                payload,
-                            )
+                            update_record("parts", {"quantity": str(new_qty)}, "id", row.get("id"))
 
-                        append_record(
-                            get_or_create_worksheet(spreadsheet, SALES_RECORDS_TAB, SALES_RECORDS_HEADERS),
-                            SALES_RECORDS_HEADERS,
+                        insert_record(
+                            "sales_records",
                             {
-                                "Date": sale_date.isoformat(),
-                                "Part_Name": selected_part,
-                                "Category": selected_category,
-                                "Supplier": supplier_choice,
-                                "Quantity_Sold": str(int(qty_sold)),
-                                "Sale_Invoice_Number": sale_invoice.strip(),
-                                "Party_Name": party_name.strip(),
-                                "Sale_Price_Per_Unit": f"{float(sale_price):.2f}",
-                                "Total_Sale_Value": f"{float(sale_price) * int(qty_sold):.2f}",
-                                "Sale_Bill_Images": files_to_json(sale_bills),
+                                "date": sale_date.isoformat(),
+                                "part_name": selected_part,
+                                "category": selected_category,
+                                "supplier": supplier_choice,
+                                "quantity_sold": str(int(qty_sold)),
+                                "sale_invoice_number": sale_invoice.strip(),
+                                "party_name": party_name.strip(),
+                                "sale_price_per_unit": f"{float(sale_price):.2f}",
+                                "total_sale_value": f"{float(sale_price) * int(qty_sold):.2f}",
+                                "sale_bill_images": files_to_json(sale_bills),
                             },
                         )
                         st.success("Sale recorded and stock updated.")
                         st.rerun()
 
 st.markdown("---")
-st.subheader("Section B - Sales Records View")
+st.subheader("Sales Records View")
 if not sales:
     st.info("No sales records found.")
 else:
     df = pd.DataFrame(sales)
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-
-    min_date = df["Date"].min().date() if df["Date"].notna().any() else date.today()
-    max_date = df["Date"].max().date() if df["Date"].notna().any() else date.today()
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    min_date = df["date"].min().date() if ("date" in df.columns and df["date"].notna().any()) else date.today()
+    max_date = df["date"].max().date() if ("date" in df.columns and df["date"].notna().any()) else date.today()
 
     c1, c2 = st.columns(2)
     with c1:
@@ -171,49 +146,93 @@ else:
     with c2:
         end_date = st.date_input("End Date", value=max_date, key="sales_end")
 
-    filter_categories = sorted(df["Category"].dropna().astype(str).replace("", "Uncategorised").unique().tolist())
+    filter_categories = sorted(df["category"].dropna().astype(str).replace("", "uncategorised").unique().tolist()) if "category" in df.columns else []
     part_filter_category = st.selectbox("Category", options=["All"] + filter_categories)
+
     filtered_parts = df.copy()
-    if part_filter_category != "All":
-        filtered_parts = filtered_parts[filtered_parts["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
-    part_filter = st.selectbox("Part Name", options=["All"] + sorted(filtered_parts["Part_Name"].dropna().astype(str).unique().tolist()))
+    if part_filter_category != "All" and "category" in filtered_parts.columns:
+        filtered_parts = filtered_parts[filtered_parts["category"].astype(str).replace("", "uncategorised") == part_filter_category]
+
+    part_names = sorted(filtered_parts["part_name"].dropna().astype(str).unique().tolist()) if "part_name" in filtered_parts.columns else []
+    part_filter = st.selectbox("Part Name", options=["All"] + part_names)
     party_filter = st.text_input("Party Name contains")
 
     filtered = df.copy()
-    filtered = filtered[(filtered["Date"].dt.date >= start_date) & (filtered["Date"].dt.date <= end_date)]
-    if part_filter_category != "All":
-        filtered = filtered[filtered["Category"].astype(str).replace("", "Uncategorised") == part_filter_category]
-    if part_filter != "All":
-        filtered = filtered[filtered["Part_Name"].astype(str) == part_filter]
-    if party_filter.strip():
-        filtered = filtered[filtered["Party_Name"].astype(str).str.contains(party_filter.strip(), case=False, na=False)]
+    if "date" in filtered.columns:
+        filtered = filtered[(filtered["date"].dt.date >= start_date) & (filtered["date"].dt.date <= end_date)]
+    if part_filter_category != "All" and "category" in filtered.columns:
+        filtered = filtered[filtered["category"].astype(str).replace("", "uncategorised") == part_filter_category]
+    if part_filter != "All" and "part_name" in filtered.columns:
+        filtered = filtered[filtered["part_name"].astype(str) == part_filter]
+    if party_filter.strip() and "party_name" in filtered.columns:
+        filtered = filtered[filtered["party_name"].astype(str).str.contains(party_filter.strip(), case=False, na=False)]
 
-    total_sales_value = pd.to_numeric(filtered.get("Total_Sale_Value", 0), errors="coerce").fillna(0).sum()
-    st.markdown(f"Total sales value for filtered period: ₹{total_sales_value:,.2f}")
+    total_sales_value = pd.to_numeric(filtered.get("total_sale_value", 0), errors="coerce").fillna(0).sum()
+    st.markdown(f"Total sales value for filtered period: Rs {total_sales_value:,.2f}")
 
     with st.expander(f"View Sales Records ({len(filtered)})", expanded=False):
         display_cols = [
-            "Date",
-            "Part_Name",
-            "Category",
-            "Quantity_Sold",
-            "Sale_Invoice_Number",
-            "Party_Name",
-            "Sale_Price_Per_Unit",
-            "Total_Sale_Value",
-            "Sale_Bill_Images",
+            "date",
+            "part_name",
+            "category",
+            "quantity_sold",
+            "sale_invoice_number",
+            "party_name",
+            "sale_price_per_unit",
+            "total_sale_value",
+            "sale_bill_images",
         ]
-        out = filtered[display_cols].copy()
-        out["Date"] = out["Date"].dt.date.astype(str)
-        out = out.rename(
-            columns={
-                "Part_Name": "Part",
-                "Quantity_Sold": "Qty",
-                "Sale_Invoice_Number": "Invoice No",
-                "Party_Name": "Party",
-                "Sale_Price_Per_Unit": "Price/Unit",
-                "Total_Sale_Value": "Total Value",
-                "Sale_Bill_Images": "Bill",
-            }
-        )
+        existing = [c for c in display_cols if c in filtered.columns]
+        out = filtered[existing].copy()
+        if "date" in out.columns:
+            out["date"] = out["date"].dt.date.astype(str)
         st.dataframe(out, use_container_width=True, hide_index=True)
+
+st.markdown("---")
+st.subheader("Edit / Delete Sale")
+if not sales:
+    st.info("No sales records available.")
+else:
+    option_map = {}
+    for rec in sales:
+        label = f"{rec.get('sale_invoice_number', '')} | {rec.get('date', '')} | {rec.get('part_name', '')}"
+        option_map[label] = rec
+
+    selected_key = st.selectbox("Select sale record", options=list(option_map.keys()))
+    selected = option_map[selected_key]
+
+    with st.form("edit_sale_form"):
+        e_date = st.date_input("Date", value=pd.to_datetime(selected.get("date", date.today()), errors="coerce").date())
+        e_part = st.text_input("Part Name", value=str(selected.get("part_name", "")))
+        e_category = st.text_input("Category", value=str(selected.get("category", "")))
+        e_supplier = st.text_input("Supplier", value=str(selected.get("supplier", "")))
+        e_qty = st.number_input("Quantity Sold", min_value=1, step=1, value=max(1, to_int(selected.get("quantity_sold", "1"))))
+        e_invoice = st.text_input("Invoice Number", value=str(selected.get("sale_invoice_number", "")))
+        e_party = st.text_input("Party Name", value=str(selected.get("party_name", "")))
+        e_price = st.number_input("Sale Price Per Unit", min_value=0.0, step=0.01, value=to_float(selected.get("sale_price_per_unit", "0")), format="%.2f")
+
+        update_submit = st.form_submit_button("Update Sale")
+        if update_submit:
+            payload = {
+                "date": e_date.isoformat(),
+                "part_name": e_part.strip(),
+                "category": e_category.strip(),
+                "supplier": e_supplier.strip(),
+                "quantity_sold": str(int(e_qty)),
+                "sale_invoice_number": e_invoice.strip(),
+                "party_name": e_party.strip(),
+                "sale_price_per_unit": f"{float(e_price):.2f}",
+                "total_sale_value": f"{float(e_price) * int(e_qty):.2f}",
+            }
+            update_record("sales_records", payload, "id", selected.get("id"))
+            st.success("Sale record updated.")
+            st.rerun()
+
+    confirm_delete = st.checkbox("Confirm delete selected sale", key="sale_delete_confirm")
+    if st.button("Delete Sale", type="secondary"):
+        if not confirm_delete:
+            st.error("Please confirm deletion first.")
+        else:
+            delete_record("sales_records", "id", selected.get("id"))
+            st.success("Sale record deleted.")
+            st.rerun()
