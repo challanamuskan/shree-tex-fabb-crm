@@ -573,6 +573,34 @@ def get_dashboard_stats():
     }
 
 
+def upsert_supplier_contact(name: str, phone: str = "", email: str = ""):
+    """Upsert supplier as a contact in the customers table (dedup by name)."""
+    name = (name or "").strip()
+    if not name:
+        return
+    try:
+        sb = get_supabase()
+        result = sb.table("customers").select("id,phone,email").ilike("name", name).limit(1).execute()
+        if result.data:
+            existing = result.data[0]
+            update_data = {}
+            if not existing.get("phone") and phone:
+                update_data["phone"] = phone.strip()
+            if not existing.get("email") and email:
+                update_data["email"] = email.strip()
+            if update_data:
+                sb.table("customers").update(update_data).eq("id", existing["id"]).execute()
+        else:
+            sb.table("customers").insert({
+                "name": name,
+                "phone": phone.strip() if phone else "",
+                "email": email.strip() if email else "",
+                "lead_status": "supplier",
+            }).execute()
+    except Exception:
+        pass  # Non-blocking — supplier dedup failure must not block part save
+
+
 # Backward-compatible aliases still used throughout the app during migration.
 def fetch_sheet_data_by_name_compat(table_name, headers=None):
     return fetch_sheet_data_by_name(table_name, headers)
