@@ -457,7 +457,6 @@ def get_dashboard_stats():
     }
 
 
-<<<<<<< Updated upstream
 def upsert_supplier_contact(name: str, phone: str = "", email: str = ""):
     """Upsert supplier as a contact in the customers table (dedup by name)."""
     name = (name or "").strip()
@@ -483,11 +482,9 @@ def upsert_supplier_contact(name: str, phone: str = "", email: str = ""):
                 "lead_status": "supplier",
             }).execute()
     except Exception:
-        pass  # Non-blocking — supplier dedup failure must not block part save
+        pass
 
 
 # Backward-compatible aliases still used throughout the app during migration.
-=======
->>>>>>> Stashed changes
 def fetch_sheet_data_by_name_compat(table_name, headers=None):
     return fetch_sheet_data_by_name(table_name, headers)
