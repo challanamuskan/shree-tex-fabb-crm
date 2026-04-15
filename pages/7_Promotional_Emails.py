@@ -6,15 +6,14 @@ import streamlit as st
 from utils.auth import require_login, is_admin
 require_login()
 
-from utils.constants import (
-    CONTACTS_HEADERS,
-    CONTACTS_TAB,
-    EMAIL_LOG_HEADERS,
-    EMAIL_LOG_TAB,
-)
 from utils.gmail_sender import get_gmail_service, send_email
+<<<<<<< Updated upstream
 from utils.supabase_db import append_record, fetch_sheet_data_by_name, fetch_table, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
+=======
+from utils.supabase_db import fetch_table, insert_record
+from utils.ui import init_page
+>>>>>>> Stashed changes
 from utils.whatsapp_sender import generate_whatsapp_link
 
 EMAIL_TYPE = "Promotional"
@@ -135,6 +134,7 @@ Bhilwara, Rajasthan""",
 init_page("Promotional Emails")
 st.title("Promotional Emails")
 
+<<<<<<< Updated upstream
 spreadsheet = get_spreadsheet_connection()
 if not spreadsheet:
     st.stop()
@@ -154,23 +154,30 @@ for rec in _raw_contacts:
         "Machine Type": str(rec.get("machine_type") or rec.get("Machine Type") or "").strip(),
         "Lead Status": str(rec.get("lead_status") or rec.get("Lead Status") or "").strip(),
     })
+=======
+contacts = [c for c in (fetch_table("customers") or []) if c is not None]
+>>>>>>> Stashed changes
 
 audience_rows = []
 for contact in contacts:
-    email = contact.get("Email", "").strip()
-    phone = contact.get("Phone", "").strip()
+    email = str(contact.get("email") or "").strip()
+    phone = str(contact.get("phone") or "").strip()
     if not email and not phone:
         continue
 
     audience_rows.append(
         {
             "Select": False,
-            "Name": contact.get("Name", "").strip(),
-            "Business Name": contact.get("Business Name", "").strip(),
+            "Name": str(contact.get("name") or "").strip(),
+            "name": str(contact.get("name") or "").strip(),
+            "Business Name": str(contact.get("business_name") or "").strip(),
+            "business_name": str(contact.get("business_name") or "").strip(),
             "Email": email,
+            "email": email,
             "Phone": phone,
-            "Machine Type": contact.get("Machine Type", "").strip(),
-            "Lead Status": contact.get("Lead Status", "").strip(),
+            "phone": phone,
+            "Machine Type": str(contact.get("machine_type") or "").strip(),
+            "Lead Status": str(contact.get("lead_status") or "").strip(),
         }
     )
 
@@ -330,7 +337,7 @@ st.text_area("Preview Body", value=preview_body, height=220, disabled=True)
 
 def personalize(text, row):
     result = text
-    result = result.replace("[Customer Name]", str(row["Name"]))
+    result = result.replace("[Customer Name]", str(row.get("name", "")))
     result = result.replace("[Business Name]", str(row["Business Name"]))
     result = result.replace("[Machine Type]", str(row["Machine Type"]))
     return result
@@ -356,9 +363,9 @@ if st.button("Send to All Selected", type="primary"):
             st.stop()
 
     for _, row in selected_df.iterrows():
-        recipient_name = str(row["Name"]).strip()
-        recipient_email = str(row["Email"]).strip()
-        recipient_phone = str(row["Phone"]).strip()
+        recipient_name = str(row.get("name", "")).strip()
+        recipient_email = str(row.get("email", "")).strip()
+        recipient_phone = str(row.get("phone", "")).strip()
         personalized_body = personalize(body, row)
 
         email_status = "Not Sent"
@@ -371,17 +378,16 @@ if st.button("Send to All Selected", type="primary"):
                 try:
                     send_email(gmail_service, recipient_email, subject, personalized_body)
                     st.success(f"Email sent to {recipient_name} ({recipient_email})")
-                    append_record(
-                        email_log_ws,
-                        EMAIL_LOG_HEADERS,
+                    insert_record(
+                        "email_log",
                         {
-                            "Timestamp": timestamp,
-                            "Email Type": EMAIL_TYPE,
-                            "Recipient Name": recipient_name,
-                            "Recipient Email": recipient_email,
-                            "Subject": subject,
-                            "Status": "Sent",
-                            "Error": "",
+                            "timestamp": timestamp,
+                            "email_type": EMAIL_TYPE,
+                            "recipient_name": recipient_name,
+                            "recipient_email": recipient_email,
+                            "subject": subject,
+                            "status": "Sent",
+                            "error": "",
                         },
                     )
                     email_status = "Sent"

@@ -107,12 +107,12 @@ if section == "Employee Report Form":
         st.info("No employees found. Admin needs to add employees first.")
         st.stop()
 
-    employee_names = [e.get("Name", "").strip() for e in employees if e.get("Name", "").strip()]
+    employee_names = [e.get("name", "").strip() for e in employees if e.get("name", "").strip()]
     selected_employee = st.selectbox("Select Your Name", employee_names, key="report_emp")
     attendance_date = date.today()
 
     today_attendance = next(
-        (r for r in attendance_records if r.get("Employee Name", "").strip() == selected_employee and parse_date(r.get("Date", "")) == attendance_date),
+        (r for r in attendance_records if r.get("employee_name", "").strip() == selected_employee and parse_date(r.get("date", "")) == attendance_date),
         None,
     )
 
@@ -127,12 +127,12 @@ if section == "Employee Report Form":
                     attendance_ws,
                     ATTENDANCE_HEADERS,
                     {
-                        "Date": attendance_date.isoformat(),
-                        "Employee Name": selected_employee,
-                        "Time In": current_time,
-                        "Time Out": "",
-                        "Total Hours": "",
-                        "Status": "",
+                        "date": attendance_date.isoformat(),
+                        "employee_name": selected_employee,
+                        "time_in": current_time,
+                        "time_out": "",
+                        "total_hours": "",
+                        "status": "",
                     },
                 )
                 time_display = datetime.strptime(current_time, "%H:%M:%S").strftime("%I:%M %p")
@@ -145,7 +145,7 @@ if section == "Employee Report Form":
             if not today_attendance:
                 st.error("Please mark Time In first.")
             else:
-                time_in = today_attendance.get("Time In", "").strip()
+                time_in = today_attendance.get("time_in", "").strip()
                 if not time_in:
                     st.error("No Time In recorded for today.")
                 else:
@@ -156,12 +156,12 @@ if section == "Employee Report Form":
                         today_attendance["_row"],
                         ATTENDANCE_HEADERS,
                         {
-                            "Date": attendance_date.isoformat(),
-                            "Employee Name": selected_employee,
-                            "Time In": time_in,
-                            "Time Out": current_time,
-                            "Total Hours": total_hours,
-                            "Status": status,
+                            "date": attendance_date.isoformat(),
+                            "employee_name": selected_employee,
+                            "time_in": time_in,
+                            "time_out": current_time,
+                            "total_hours": total_hours,
+                            "status": status,
                         },
                     )
                     time_display = datetime.strptime(current_time, "%H:%M:%S").strftime("%I:%M %p")
@@ -196,13 +196,13 @@ if section == "Employee Report Form":
                     reports_ws,
                     DAILY_REPORTS_HEADERS,
                     {
-                        "Date": report_date.isoformat(),
-                        "Employee Name": selected_employee,
-                        "Tasks Completed": tasks_completed.strip(),
-                        "Orders Dispatched": str(int(orders_dispatched)),
-                        "Payments Collected": f"{float(payments_collected):.2f}",
-                        "Expenses Incurred": f"{float(expenses_incurred):.2f}",
-                        "Issues/Remarks": issues_remarks.strip(),
+                        "date": report_date.isoformat(),
+                        "employee_name": selected_employee,
+                        "tasks_completed": tasks_completed.strip(),
+                        "orders_dispatched": str(int(orders_dispatched)),
+                        "payments_collected": f"{float(payments_collected):.2f}",
+                        "expenses_incurred": f"{float(expenses_incurred):.2f}",
+                        "issues_remarks": issues_remarks.strip(),
                     },
                 )
                 st.success("Report submitted successfully!")
@@ -267,8 +267,8 @@ elif section == "Admin Panel":
             st.info("No employees found. Add employees first.")
             st.stop()
 
-        employee_names = [e.get("Name", "").strip() for e in employees if e.get("Name", "").strip()]
-        employee_map = {e.get("Name", "").strip(): e for e in employees}
+        employee_names = [e.get("name", "").strip() for e in employees if e.get("name", "").strip()]
+        employee_map = {e.get("name", "").strip(): e for e in employees}
 
         with st.form("assign_task_form", clear_on_submit=True):
             task_date = st.date_input("Task Date", value=date.today())
@@ -282,7 +282,7 @@ elif section == "Admin Panel":
                     st.error("Task and Target are required.")
                 else:
                     emp = employee_map.get(selected_emp)
-                    emp_whatsapp = emp.get("WhatsApp", "").strip() if emp else ""
+                    emp_whatsapp = emp.get("whatsapp", "").strip() if emp else ""
 
                     if not emp_whatsapp:
                         st.error("Employee does not have a WhatsApp number.")
@@ -303,12 +303,12 @@ elif section == "Admin Panel":
                                 tasks_ws,
                                 EMPLOYEE_TASKS_HEADERS,
                                 {
-                                    "Date": task_date.isoformat(),
-                                    "Employee Name": selected_emp,
-                                    "Task": task_description.strip(),
-                                    "Target": task_target.strip(),
-                                    "Status": "Assigned",
-                                    "Report Submitted": "No",
+                                    "date": task_date.isoformat(),
+                                    "employee_name": selected_emp,
+                                    "task": task_description.strip(),
+                                    "target": task_target.strip(),
+                                    "status": "Assigned",
+                                    "report_submitted": "No",
                                 },
                             )
                             st.success("Task saved to database. Open the WhatsApp link to send it.")
@@ -317,7 +317,7 @@ elif section == "Admin Panel":
                             st.error(f"Error saving task: {exc}")
 
         st.markdown("### Today's Task Assignments")
-        today_tasks = [t for t in tasks if parse_date(t.get("Date", "")) == date.today()]
+        today_tasks = [t for t in tasks if parse_date(t.get("date", "")) == date.today()]
         st.markdown(f"**{len(today_tasks)} tasks assigned today**")
         if today_tasks:
             with st.expander(f"📋 View Tasks ({len(today_tasks)} records) — click to expand", expanded=False):
@@ -328,22 +328,22 @@ elif section == "Admin Panel":
 
     with admin_tab_3:
         st.markdown("### Attendance Management")
-        today_attendance_records = [r for r in attendance_records if parse_date(r.get("Date", "")) == date.today()]
+        today_attendance_records = [r for r in attendance_records if parse_date(r.get("date", "")) == date.today()]
 
         attendance_summary = {}
         for emp in employees:
-            emp_name = emp.get("Name", "").strip()
-            emp_att = next((r for r in today_attendance_records if r.get("Employee Name", "").strip() == emp_name), None)
+            emp_name = emp.get("name", "").strip()
+            emp_att = next((r for r in today_attendance_records if r.get("employee_name", "").strip() == emp_name), None)
             if emp_att:
                 attendance_summary[emp_name] = emp_att
             else:
                 attendance_summary[emp_name] = {
-                    "Date": date.today().isoformat(),
-                    "Employee Name": emp_name,
-                    "Time In": "Not marked",
-                    "Time Out": "Not marked",
-                    "Total Hours": "",
-                    "Status": "Absent",
+                    "date": date.today().isoformat(),
+                    "employee_name": emp_name,
+                    "time_in": "Not marked",
+                    "time_out": "Not marked",
+                    "total_hours": "",
+                    "status": "Absent",
                 }
 
         st.markdown(f"### Today's Attendance ({len(today_attendance_records)} checked in)")
@@ -359,10 +359,10 @@ elif section == "Admin Panel":
         for emp_name, att_rec in sorted(attendance_summary.items()):
             summary_rows.append({
                 "Employee": emp_name,
-                "Time In": att_rec.get("Time In", "Not marked"),
-                "Time Out": att_rec.get("Time Out", "Not marked"),
-                "Total Hours": att_rec.get("Total Hours", "—"),
-                "Status": att_rec.get("Status", "Absent"),
+                "time_in": att_rec.get("time_in", "Not marked"),
+                "time_out": att_rec.get("time_out", "Not marked"),
+                "total_hours": att_rec.get("total_hours", "—"),
+                "status": att_rec.get("status", "Absent"),
             })
         
         with st.expander(f"📋 View Summary ({len(summary_rows)} records) — click to expand", expanded=False):
@@ -379,18 +379,18 @@ elif section == "Admin Dashboard":
 
     selected_report_date = st.date_input("Select Date for Reports", value=date.today())
 
-    day_reports = [r for r in reports if parse_date(r.get("Date", "")) == selected_report_date]
-    day_attendance = [r for r in attendance_records if parse_date(r.get("Date", "")) == selected_report_date]
+    day_reports = [r for r in reports if parse_date(r.get("date", "")) == selected_report_date]
+    day_attendance = [r for r in attendance_records if parse_date(r.get("date", "")) == selected_report_date]
 
     st.markdown("---")
 
-    attendance_present = sum(1 for r in day_attendance if r.get("Status", "").strip() == "Present")
+    attendance_present = sum(1 for r in day_attendance if r.get("status", "").strip() == "Present")
     total_employees = len(employees)
     st.markdown(f"### Attendance: :green[{attendance_present}/{total_employees} employees present today]")
 
     col1, col2, col3, col4 = st.columns(4)
-    present_count = sum(1 for r in day_attendance if r.get("Status", "").strip() == "Present")
-    half_day_count = sum(1 for r in day_attendance if r.get("Status", "").strip() == "Half Day")
+    present_count = sum(1 for r in day_attendance if r.get("status", "").strip() == "Present")
+    half_day_count = sum(1 for r in day_attendance if r.get("status", "").strip() == "Half Day")
     absent_count = total_employees - present_count - half_day_count
 
     col1.metric("Present", present_count)
@@ -402,9 +402,9 @@ elif section == "Admin Dashboard":
 
     if day_reports:
         col1, col2, col3 = st.columns(3)
-        total_dispatches = sum(to_int(r.get("Orders Dispatched", 0)) for r in day_reports)
-        total_payments = sum(to_float(r.get("Payments Collected", 0)) for r in day_reports)
-        total_expenses = sum(to_float(r.get("Expenses Incurred", 0)) for r in day_reports)
+        total_dispatches = sum(to_int(r.get("orders_dispatched", 0)) for r in day_reports)
+        total_payments = sum(to_float(r.get("payments_collected", 0)) for r in day_reports)
+        total_expenses = sum(to_float(r.get("expenses_incurred", 0)) for r in day_reports)
 
         col1.metric("Total Orders Dispatched", total_dispatches)
         col2.metric("Total Payments Collected", f"₹{total_payments:,.2f}")
@@ -418,22 +418,22 @@ elif section == "Admin Dashboard":
 
         st.markdown("---")
         st.markdown("### vs Target Comparison")
-        day_tasks = [t for t in tasks if parse_date(t.get("Date", "")) == selected_report_date]
+        day_tasks = [t for t in tasks if parse_date(t.get("date", "")) == selected_report_date]
 
         if day_tasks:
             comparison_rows = []
             for report in day_reports:
-                emp_name = report.get("Employee Name", "").strip()
-                emp_task = next((t for t in day_tasks if t.get("Employee Name", "").strip() == emp_name), None)
+                emp_name = report.get("employee_name", "").strip()
+                emp_task = next((t for t in day_tasks if t.get("employee_name", "").strip() == emp_name), None)
 
                 if emp_task:
-                    target = emp_task.get("Target", "").strip()
-                    dispatched = to_int(report.get("Orders Dispatched", 0))
+                    target = emp_task.get("target", "").strip()
+                    dispatched = to_int(report.get("orders_dispatched", 0))
                     comparison_rows.append({
                         "Employee": emp_name,
-                        "Target": target,
-                        "Orders Dispatched": dispatched,
-                        "Status": "✓ On Track" if dispatched > 0 else "⚠ No Progress",
+                        "target": target,
+                        "orders_dispatched": dispatched,
+                        "status": "✓ On Track" if dispatched > 0 else "⚠ No Progress",
                     })
 
             if comparison_rows:

@@ -6,58 +6,90 @@ import streamlit as st
 from supabase import Client, create_client
 
 from utils.constants import (
-    ATTENDANCE_HEADERS, ATTENDANCE_TAB, CATEGORIES_HEADERS, CATEGORIES_TAB,
-    CONTACTS_HEADERS, CONTACTS_TAB, DAILY_REPORTS_HEADERS, DAILY_REPORTS_TAB,
-    EMAIL_LOG_HEADERS, EMAIL_LOG_TAB, EMPLOYEES_HEADERS, EMPLOYEES_TAB,
-    EMPLOYEE_TASKS_HEADERS, EMPLOYEE_TASKS_TAB, PARTS_HEADERS, PARTS_TAB,
-    PAYMENTS_HEADERS, PAYMENTS_TAB, PRICE_HISTORY_HEADERS, PRICE_HISTORY_TAB,
-    PURCHASE_ORDERS_HEADERS, PURCHASE_ORDERS_TAB, PURCHASE_RECORDS_HEADERS,
-    PURCHASE_RECORDS_TAB, RETURNS_HEADERS, RETURNS_TAB, SALES_RECORDS_HEADERS,
-    SALES_RECORDS_TAB, SETTINGS_HEADERS, SETTINGS_TAB,
+    ATTENDANCE_HEADERS,
+    ATTENDANCE_TAB,
+    CATEGORIES_HEADERS,
+    CATEGORIES_TAB,
+    CONTACTS_HEADERS,
+    CONTACTS_TAB,
+    DAILY_REPORTS_HEADERS,
+    DAILY_REPORTS_TAB,
+    EMAIL_LOG_HEADERS,
+    EMAIL_LOG_TAB,
+    EMPLOYEES_HEADERS,
+    EMPLOYEES_TAB,
+    EMPLOYEE_TASKS_HEADERS,
+    EMPLOYEE_TASKS_TAB,
+    PARTS_HEADERS,
+    PARTS_TAB,
+    PAYMENTS_HEADERS,
+    PAYMENTS_TAB,
+    PRICE_HISTORY_HEADERS,
+    PRICE_HISTORY_TAB,
+    PURCHASE_ORDERS_HEADERS,
+    PURCHASE_ORDERS_TAB,
+    PURCHASE_RECORDS_HEADERS,
+    PURCHASE_RECORDS_TAB,
+    RETURNS_HEADERS,
+    RETURNS_TAB,
+    SALES_RECORDS_HEADERS,
+    SALES_RECORDS_TAB,
+    SETTINGS_HEADERS,
+    SETTINGS_TAB,
 )
 
+
 TABLE_HEADERS = {
-    PARTS_TAB: PARTS_HEADERS, CATEGORIES_TAB: CATEGORIES_HEADERS,
-    PRICE_HISTORY_TAB: PRICE_HISTORY_HEADERS, CONTACTS_TAB: CONTACTS_HEADERS,
-    PAYMENTS_TAB: PAYMENTS_HEADERS, PURCHASE_ORDERS_TAB: PURCHASE_ORDERS_HEADERS,
-    SALES_RECORDS_TAB: SALES_RECORDS_HEADERS, PURCHASE_RECORDS_TAB: PURCHASE_RECORDS_HEADERS,
-    RETURNS_TAB: RETURNS_HEADERS, EMAIL_LOG_TAB: EMAIL_LOG_HEADERS,
-    EMPLOYEES_TAB: EMPLOYEES_HEADERS, EMPLOYEE_TASKS_TAB: EMPLOYEE_TASKS_HEADERS,
-    DAILY_REPORTS_TAB: DAILY_REPORTS_HEADERS, ATTENDANCE_TAB: ATTENDANCE_HEADERS,
+    PARTS_TAB: PARTS_HEADERS,
+    CATEGORIES_TAB: CATEGORIES_HEADERS,
+    PRICE_HISTORY_TAB: PRICE_HISTORY_HEADERS,
+    CONTACTS_TAB: CONTACTS_HEADERS,
+    PAYMENTS_TAB: PAYMENTS_HEADERS,
+    PURCHASE_ORDERS_TAB: PURCHASE_ORDERS_HEADERS,
+    SALES_RECORDS_TAB: SALES_RECORDS_HEADERS,
+    PURCHASE_RECORDS_TAB: PURCHASE_RECORDS_HEADERS,
+    RETURNS_TAB: RETURNS_HEADERS,
+    EMAIL_LOG_TAB: EMAIL_LOG_HEADERS,
+    EMPLOYEES_TAB: EMPLOYEES_HEADERS,
+    EMPLOYEE_TASKS_TAB: EMPLOYEE_TASKS_HEADERS,
+    DAILY_REPORTS_TAB: DAILY_REPORTS_HEADERS,
+    ATTENDANCE_TAB: ATTENDANCE_HEADERS,
     SETTINGS_TAB: SETTINGS_HEADERS,
 }
 
 TABLE_ALIASES = {
-    "parts": "parts", PARTS_TAB.lower(): "parts",
-    "categories": "categories", CATEGORIES_TAB.lower(): "categories",
-    "price_history": "price_history", PRICE_HISTORY_TAB.lower(): "price_history",
-    "customers": "customers", "customers_leads": "customers", CONTACTS_TAB.lower(): "customers",
-    "payments": "payments", PAYMENTS_TAB.lower(): "payments",
-    "purchase_orders": "purchase_orders", PURCHASE_ORDERS_TAB.lower(): "purchase_orders",
-    "sales_records": "sales_records", SALES_RECORDS_TAB.lower(): "sales_records",
-    "purchase_records": "purchase_records", PURCHASE_RECORDS_TAB.lower(): "purchase_records",
-    "returns": "returns", RETURNS_TAB.lower(): "returns",
-    "email_log": "email_log", EMAIL_LOG_TAB.lower(): "email_log",
-    "employees": "employees", EMPLOYEES_TAB.lower(): "employees",
-    "employee_tasks": "employee_tasks", EMPLOYEE_TASKS_TAB.lower(): "employee_tasks",
-    "daily_reports": "daily_reports", DAILY_REPORTS_TAB.lower(): "daily_reports",
-    "attendance": "attendance", ATTENDANCE_TAB.lower(): "attendance",
-    "settings": "settings", SETTINGS_TAB.lower(): "settings",
+    "parts": "parts",
+    PARTS_TAB.lower(): "parts",
+    "categories": "categories",
+    CATEGORIES_TAB.lower(): "categories",
+    "price_history": "price_history",
+    PRICE_HISTORY_TAB.lower(): "price_history",
+    "customers": "customers",
+    "customers_leads": "customers",
+    CONTACTS_TAB.lower(): "customers",
+    "payments": "payments",
+    PAYMENTS_TAB.lower(): "payments",
+    "purchase_orders": "purchase_orders",
+    PURCHASE_ORDERS_TAB.lower(): "purchase_orders",
+    "sales_records": "sales_records",
+    SALES_RECORDS_TAB.lower(): "sales_records",
+    "purchase_records": "purchase_records",
+    PURCHASE_RECORDS_TAB.lower(): "purchase_records",
+    "returns": "returns",
+    RETURNS_TAB.lower(): "returns",
+    "email_log": "email_log",
+    EMAIL_LOG_TAB.lower(): "email_log",
+    "employees": "employees",
+    EMPLOYEES_TAB.lower(): "employees",
+    "employee_tasks": "employee_tasks",
+    EMPLOYEE_TASKS_TAB.lower(): "employee_tasks",
+    "daily_reports": "daily_reports",
+    DAILY_REPORTS_TAB.lower(): "daily_reports",
+    "attendance": "attendance",
+    ATTENDANCE_TAB.lower(): "attendance",
+    "settings": "settings",
+    SETTINGS_TAB.lower(): "settings",
 }
-
-# ── In-memory page-level cache ───────────────────────────────────────────────
-# Populated on first fetch_table() call within a page render.
-# Cleared immediately on any insert / update / delete so st.rerun() always
-# fetches fresh data from Supabase.
-_PAGE_CACHE: dict = {}
-
-
-def _invalidate_cache(table_name: str = None):
-    global _PAGE_CACHE
-    if table_name:
-        _PAGE_CACHE.pop(_resolve_table_name(table_name), None)
-    else:
-        _PAGE_CACHE.clear()
 
 
 def _normalize_key(value):
@@ -97,6 +129,25 @@ def _display_key_from_db_key(key):
     return "_".join(part.capitalize() if part else part for part in parts)
 
 
+def _row_to_payload(row, headers=None):
+    if headers:
+        payload = {}
+        for header in headers:
+            payload[_normalize_key(header)] = row.get(_normalize_key(header), row.get(header, ""))
+        return payload
+    return {k: v for k, v in row.items() if k != "id"}
+
+
+def _fetch_raw_rows(table_name):
+    try:
+        sb = get_supabase()
+        response = sb.table(_resolve_table_name(table_name)).select("*").limit(10000).execute()
+        return response.data if response.data else []
+    except Exception as exc:
+        st.error(f"Database error fetching {table_name}: {exc}")
+        return []
+
+
 @st.cache_resource
 def get_supabase() -> Client:
     url = st.secrets.get("SUPABASE_URL") or os.environ.get("SUPABASE_URL")
@@ -104,21 +155,6 @@ def get_supabase() -> Client:
     if not url or not key:
         raise KeyError("SUPABASE_URL and SUPABASE_KEY must be set in Streamlit secrets or environment variables")
     return create_client(str(url), str(key))
-
-
-def _fetch_raw_rows(table_name):
-    resolved = _resolve_table_name(table_name)
-    if resolved in _PAGE_CACHE:
-        return _PAGE_CACHE[resolved]
-    try:
-        sb = get_supabase()
-        response = sb.table(resolved).select("*").limit(10000).execute()
-        data = response.data if response.data else []
-        _PAGE_CACHE[resolved] = data
-        return data
-    except Exception as exc:
-        st.error(f"Database error fetching {table_name}: {exc}")
-        return []
 
 
 def fetch_table(table_name):
@@ -129,9 +165,7 @@ def insert_record(table_name, record_dict):
     try:
         sb = get_supabase()
         clean = {_normalize_key(k): _clean_value(v) for k, v in record_dict.items() if k != "_row"}
-        result = sb.table(_resolve_table_name(table_name)).insert(clean).execute()
-        _invalidate_cache(_resolve_table_name(table_name))  # ← fresh data on next fetch
-        return result
+        return sb.table(_resolve_table_name(table_name)).insert(clean).execute()
     except Exception as exc:
         st.error(f"Insert error: {exc}")
         return None
@@ -141,9 +175,7 @@ def update_record(table_name, record_dict, match_column, match_value):
     try:
         sb = get_supabase()
         clean = {_normalize_key(k): _clean_value(v) for k, v in record_dict.items() if k != "_row"}
-        result = sb.table(_resolve_table_name(table_name)).update(clean).eq(match_column, match_value).execute()
-        _invalidate_cache(_resolve_table_name(table_name))  # ← fresh data on next fetch
-        return result
+        return sb.table(_resolve_table_name(table_name)).update(clean).eq(match_column, match_value).execute()
     except Exception as exc:
         st.error(f"Update error: {exc}")
         return None
@@ -156,9 +188,7 @@ def delete_record(table_name, match_column, match_value=None):
         if match_value is None:
             match_value = match_column
             match_column = "id"
-        result = query.eq(match_column, match_value).execute()
-        _invalidate_cache(_resolve_table_name(table_name))  # ← fresh data on next fetch
-        return result
+        return query.eq(match_column, match_value).execute()
     except Exception as exc:
         st.error(f"Delete error: {exc}")
         return None
@@ -169,13 +199,16 @@ def bulk_insert(table_name, list_of_dicts):
         sb = get_supabase()
         cleaned = []
         for record in list_of_dicts:
-            clean = {_normalize_key(k): _clean_value(v) for k, v in record.items() if k != "_row"}
+            clean = {
+                _normalize_key(k): _clean_value(v)
+                for k, v in record.items()
+                if k != "_row"
+            }
             cleaned.append(clean)
         for i in range(0, len(cleaned), 500):
-            chunk = cleaned[i: i + 500]
+            chunk = cleaned[i : i + 500]
             sb.table(_resolve_table_name(table_name)).insert(chunk).execute()
             time.sleep(0.5)
-        _invalidate_cache(_resolve_table_name(table_name))
         return True, len(cleaned)
     except Exception as exc:
         return False, str(exc)
@@ -251,7 +284,9 @@ class SupabaseWorksheet:
 
     def col_values(self, column_index):
         headers = self.headers or []
-        if column_index < 1 or not headers:
+        if column_index < 1:
+            return []
+        if not headers:
             return []
         header = headers[column_index - 1] if column_index - 1 < len(headers) else headers[0]
         values = [header]
@@ -303,46 +338,122 @@ def update_part_quantity(part_name: str, delta: int):
             current_qty = 0
         new_qty = max(0, current_qty + delta)
         sb.table("parts").update({"quantity": new_qty}).eq("id", parts[0]["id"]).execute()
-        _invalidate_cache("parts")
 
 
 def update_part_image(part_id: str, image_base64: str):
     sb = get_supabase()
-    result = sb.table("parts").update({"image": image_base64}).eq("id", part_id).execute()
-    _invalidate_cache("parts")
-    return result
+    return sb.table("parts").update({"image": image_base64}).eq("id", part_id).execute()
 
 
-def get_parts(): return fetch_table("parts")
-def add_part(data): return insert_record("parts", data)
-def update_part(part_id, data): return update_record("parts", data, "id", part_id)
-def delete_part(part_id): return delete_record("parts", "id", part_id)
-def get_categories(): return fetch_table("categories")
-def add_category(data): return insert_record("categories", data)
-def get_customers(): return fetch_table("customers")
-def add_customer(data): return insert_record("customers", data)
-def update_customer(cid, data): return update_record("customers", data, "id", cid)
-def delete_customer(cid): return delete_record("customers", "id", cid)
-def get_payments(): return fetch_table("payments")
-def add_payment(data): return insert_record("payments", data)
-def update_payment(pid, data): return update_record("payments", data, "id", pid)
-def delete_payment(pid): return delete_record("payments", "id", pid)
-def get_purchase_orders(): return fetch_table("purchase_orders")
-def add_purchase_order(data): return insert_record("purchase_orders", data)
-def update_purchase_order(oid, data): return update_record("purchase_orders", data, "id", oid)
-def delete_purchase_order(oid): return delete_record("purchase_orders", "id", oid)
-def get_sales_records(): return fetch_table("sales_records")
-def add_sale(data): return insert_record("sales_records", data)
-def get_purchase_records(): return fetch_table("purchase_records")
-def add_purchase_record(data): return insert_record("purchase_records", data)
-def get_returns(): return fetch_table("returns")
-def add_return(data): return insert_record("returns", data)
-def get_employees(): return fetch_table("employees")
-def add_employee(data): return insert_record("employees", data)
-def delete_employee(eid): return delete_record("employees", "id", eid)
+def get_parts():
+    return fetch_table("parts")
 
 
-def get_tasks(date_str=None):
+def add_part(data: dict):
+    return insert_record("parts", data)
+
+
+def update_part(part_id: str, data: dict):
+    return update_record("parts", data, "id", part_id)
+
+
+def delete_part(part_id: str):
+    return delete_record("parts", "id", part_id)
+
+
+def get_categories():
+    return fetch_table("categories")
+
+
+def add_category(data: dict):
+    return insert_record("categories", data)
+
+
+def get_customers():
+    return fetch_table("customers")
+
+
+def add_customer(data: dict):
+    return insert_record("customers", data)
+
+
+def update_customer(cid: str, data: dict):
+    return update_record("customers", data, "id", cid)
+
+
+def delete_customer(cid: str):
+    return delete_record("customers", "id", cid)
+
+
+def get_payments():
+    return fetch_table("payments")
+
+
+def add_payment(data: dict):
+    return insert_record("payments", data)
+
+
+def update_payment(pid: str, data: dict):
+    return update_record("payments", data, "id", pid)
+
+
+def delete_payment(pid: str):
+    return delete_record("payments", "id", pid)
+
+
+def get_purchase_orders():
+    return fetch_table("purchase_orders")
+
+
+def add_purchase_order(data: dict):
+    return insert_record("purchase_orders", data)
+
+
+def update_purchase_order(oid: str, data: dict):
+    return update_record("purchase_orders", data, "id", oid)
+
+
+def delete_purchase_order(oid: str):
+    return delete_record("purchase_orders", "id", oid)
+
+
+def get_sales_records():
+    return fetch_table("sales_records")
+
+
+def add_sale(data: dict):
+    return insert_record("sales_records", data)
+
+
+def get_purchase_records():
+    return fetch_table("purchase_records")
+
+
+def add_purchase_record(data: dict):
+    return insert_record("purchase_records", data)
+
+
+def get_returns():
+    return fetch_table("returns")
+
+
+def add_return(data: dict):
+    return insert_record("returns", data)
+
+
+def get_employees():
+    return fetch_table("employees")
+
+
+def add_employee(data: dict):
+    return insert_record("employees", data)
+
+
+def delete_employee(eid: str):
+    return delete_record("employees", "id", eid)
+
+
+def get_tasks(date_str: str = None):
     sb = get_supabase()
     q = sb.table("employee_tasks").select("*")
     if date_str:
@@ -350,10 +461,11 @@ def get_tasks(date_str=None):
     return q.execute().data
 
 
-def add_task(data): return insert_record("employee_tasks", data)
+def add_task(data: dict):
+    return insert_record("employee_tasks", data)
 
 
-def get_daily_reports(date_str=None):
+def get_daily_reports(date_str: str = None):
     sb = get_supabase()
     q = sb.table("daily_reports").select("*")
     if date_str:
@@ -361,10 +473,11 @@ def get_daily_reports(date_str=None):
     return q.execute().data
 
 
-def add_daily_report(data): return insert_record("daily_reports", data)
+def add_daily_report(data: dict):
+    return insert_record("daily_reports", data)
 
 
-def get_attendance(date_str=None):
+def get_attendance(date_str: str = None):
     sb = get_supabase()
     q = sb.table("attendance").select("*")
     if date_str:
@@ -372,11 +485,9 @@ def get_attendance(date_str=None):
     return q.execute().data
 
 
-def upsert_attendance(data):
+def upsert_attendance(data: dict):
     sb = get_supabase()
-    result = sb.table("attendance").upsert(data, on_conflict="date,employee_name").execute()
-    _invalidate_cache("attendance")
-    return result
+    return sb.table("attendance").upsert(data, on_conflict="date,employee_name").execute()
 
 
 def get_email_log():
@@ -384,24 +495,26 @@ def get_email_log():
     return sb.table("email_log").select("*").order("timestamp", desc=True).limit(50).execute().data
 
 
-def add_email_log(data): return insert_record("email_log", data)
+def add_email_log(data: dict):
+    return insert_record("email_log", data)
 
 
-def get_user(username):
+def get_user(username: str):
     sb = get_supabase()
     result = sb.table("users").select("*").eq("username", username).execute().data
     return result[0] if result else None
 
 
-def add_user(data): return insert_record("users", data)
+def add_user(data: dict):
+    return insert_record("users", data)
 
 
-def update_user_password(username, new_hash):
+def update_user_password(username: str, new_hash: str):
     sb = get_supabase()
     return sb.table("users").update({"password_hash": new_hash, "must_change_password": False}).eq("username", username).execute()
 
 
-def delete_user(username):
+def delete_user(username: str):
     sb = get_supabase()
     return sb.table("users").delete().eq("username", username).execute()
 
@@ -411,7 +524,7 @@ def get_all_users():
     return sb.table("users").select("username,role,full_name,email,created_at").execute().data
 
 
-def get_price_history(part_name=None):
+def get_price_history(part_name: str = None):
     sb = get_supabase()
     q = sb.table("price_history").select("*")
     if part_name:
@@ -419,7 +532,8 @@ def get_price_history(part_name=None):
     return q.execute().data
 
 
-def add_price_history(data): return insert_record("price_history", data)
+def add_price_history(data: dict):
+    return insert_record("price_history", data)
 
 
 def get_dashboard_stats():
@@ -445,10 +559,7 @@ def get_dashboard_stats():
                 pending_total += float(str(row.get("amount", 0)).strip() or 0)
             except (TypeError, ValueError):
                 continue
-    open_leads = sum(
-        1 for row in contacts
-        if str(row.get("lead_status", "")).strip().lower() in {"new", "contacted", "interested", "negotiation"}
-    )
+    open_leads = sum(1 for row in contacts if str(row.get("lead_status", "")).strip().lower() in {"new", "contacted", "interested", "negotiation"})
     return {
         "total_parts": len(parts),
         "low_stock": low_stock,
@@ -457,37 +568,6 @@ def get_dashboard_stats():
     }
 
 
-<<<<<<< Updated upstream
-def upsert_supplier_contact(name: str, phone: str = "", email: str = ""):
-    """Upsert supplier as a contact in the customers table (dedup by name)."""
-    name = (name or "").strip()
-    if not name:
-        return
-    try:
-        sb = get_supabase()
-        result = sb.table("customers").select("id,phone,email").ilike("name", name).limit(1).execute()
-        if result.data:
-            existing = result.data[0]
-            update_data = {}
-            if not existing.get("phone") and phone:
-                update_data["phone"] = phone.strip()
-            if not existing.get("email") and email:
-                update_data["email"] = email.strip()
-            if update_data:
-                sb.table("customers").update(update_data).eq("id", existing["id"]).execute()
-        else:
-            sb.table("customers").insert({
-                "name": name,
-                "phone": phone.strip() if phone else "",
-                "email": email.strip() if email else "",
-                "lead_status": "supplier",
-            }).execute()
-    except Exception:
-        pass  # Non-blocking — supplier dedup failure must not block part save
-
-
 # Backward-compatible aliases still used throughout the app during migration.
-=======
->>>>>>> Stashed changes
 def fetch_sheet_data_by_name_compat(table_name, headers=None):
     return fetch_sheet_data_by_name(table_name, headers)

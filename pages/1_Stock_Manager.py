@@ -26,15 +26,13 @@ from utils.constants import (
 )
 from utils.file_handler import base64_to_image, image_to_base64
 from utils.supabase_db import (
-    append_record,
+    insert_record,
     delete_record,
-    fetch_tab,
-    fetch_sheet_data_by_name,
-    get_or_create_worksheet,
+    fetch_table,
     update_record,
     upsert_supplier_contact,
 )
-from utils.ui import check_admin_access, get_spreadsheet_connection, init_page
+from utils.ui import check_admin_access, init_page
 
 require_login()
 init_page("Stock Manager")
@@ -77,20 +75,125 @@ def extract_image_payload(raw_value):
     return text
 
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
+def map_parts(rows):
+    mapped = []
+    for r in rows:
+        mapped.append(
+            {
+                "_row": r.get("id"),
+                "cid": str(r.get("cid", "") or ""),
+                "Category": str(r.get("category", "") or ""),
+                "Part_Name": str(r.get("part_name", "") or ""),
+                "Unit_Sale_Price": str(r.get("unit_sale_price", "") or ""),
+                "Quantity": str(r.get("quantity", "") or ""),
+                "status": str(r.get("status", "") or ""),
+                "Date_Added": str(r.get("date_added", "") or ""),
+                "Legacy_ID": str(r.get("legacy_id", "") or ""),
+                "Price_Type": str(r.get("price_type", "") or ""),
+                "Box_Number": str(r.get("box_number", "") or ""),
+                "Supplier_Name": str(r.get("supplier_name", "") or ""),
+                "image": str(r.get("image", "") or ""),
+                "Part_Number": "",
+                "Supplier_Phone": "",
+                "Supplier_Email": "",
+                "Reorder_Level": "",
+                "Unit_Purchase_Price": "",
+                "Purchase_Date": "",
+                "Product_Image": "",
+                "Part_Documents": "",
+            }
+        )
+    return mapped
 
-parts = fetch_sheet_data_by_name(PARTS_TAB, PARTS_HEADERS)
-categories = fetch_sheet_data_by_name(CATEGORIES_TAB, CATEGORIES_HEADERS)
-price_history = fetch_sheet_data_by_name(PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS)
-sales_records = fetch_sheet_data_by_name(SALES_RECORDS_TAB, SALES_RECORDS_HEADERS)
-purchase_records = fetch_sheet_data_by_name(PURCHASE_RECORDS_TAB, PURCHASE_RECORDS_HEADERS)
-returns_records = fetch_sheet_data_by_name(RETURNS_TAB, RETURNS_HEADERS)
+
+def map_categories(rows):
+    return [
+        {
+            "_row": r.get("id"),
+            "Category_Name": str(r.get("category_name", "") or ""),
+            "Description": str(r.get("description", "") or ""),
+            "Created_Date": str(r.get("created_date", "") or ""),
+        }
+        for r in rows
+    ]
+
+
+def map_price_history(rows):
+    return [
+        {
+            "_row": r.get("id"),
+            "Date": str(r.get("date", "") or ""),
+            "Part_Name": str(r.get("part_name", "") or ""),
+            "Supplier_Name": str(r.get("supplier_name", "") or ""),
+            "Old_Price": str(r.get("old_price", "") or ""),
+            "New_Price": str(r.get("new_price", "") or ""),
+            "Updated_By": str(r.get("updated_by", "") or ""),
+        }
+        for r in rows
+    ]
+
+
+def map_sales(rows):
+    return [
+        {
+            "_row": r.get("id"),
+            "Date": str(r.get("date", "") or ""),
+            "Part_Name": str(r.get("part_name", "") or ""),
+            "Category": str(r.get("category", "") or ""),
+            "Supplier": str(r.get("supplier", "") or ""),
+            "Quantity_Sold": str(r.get("quantity_sold", "") or ""),
+            "Sale_Invoice_Number": str(r.get("sale_invoice_number", "") or ""),
+            "Party_Name": str(r.get("party_name", "") or ""),
+            "Sale_Price_Per_Unit": str(r.get("sale_price_per_unit", "") or ""),
+            "Total_Sale_Value": str(r.get("total_sale_value", "") or ""),
+            "Sale_Bill_Images": str(r.get("sale_bill_images", "") or ""),
+        }
+        for r in rows
+    ]
+
+
+def map_purchases(rows):
+    return [
+        {
+            "_row": r.get("id"),
+            "Date": str(r.get("date", "") or ""),
+            "Part_Name": str(r.get("part_name", "") or ""),
+            "Category": str(r.get("category", "") or ""),
+            "Supplier_Name": str(r.get("supplier_name", "") or ""),
+            "Quantity_Purchased": str(r.get("quantity_purchased", "") or ""),
+            "Purchase_Invoice_Number": str(r.get("purchase_invoice_number", "") or ""),
+            "Purchase_Price_Per_Unit": str(r.get("purchase_price_per_unit", "") or ""),
+            "Total_Purchase_Value": str(r.get("total_purchase_value", "") or ""),
+            "Purchase_Bill_Images": str(r.get("purchase_bill_images", "") or ""),
+        }
+        for r in rows
+    ]
+
+
+def map_returns(rows):
+    return [
+        {
+            "_row": r.get("id"),
+            "Date": str(r.get("date", "") or ""),
+            "Part_Name": str(r.get("part_name", "") or ""),
+            "Category": str(r.get("category", "") or ""),
+            "Quantity": str(r.get("quantity", "") or ""),
+            "Party_Supplier_Name": str(r.get("party_supplier_name", "") or ""),
+        }
+        for r in rows
+    ]
+
+
+parts = map_parts(fetch_table("parts"))
+categories = map_categories(fetch_table("categories"))
+price_history = map_price_history(fetch_table("price_history"))
+sales_records = map_sales(fetch_table("sales_records"))
+purchase_records = map_purchases(fetch_table("purchase_records"))
+returns_records = map_returns(fetch_table("returns"))
 
 # Auto-sync: extract unique categories from Parts and ensure they exist in Categories sheet
 try:
-    parts_data = fetch_table("parts")
+    parts_data = parts
     parts_df = pd.DataFrame(parts_data)
     if "Category" in parts_df.columns:
         unique_cats_from_parts = set(
@@ -102,7 +205,7 @@ try:
         )
 
         # Get existing categories from Categories sheet
-        cats_data = fetch_table("categories")
+        cats_data = categories
         cats_df = pd.DataFrame(cats_data)
         existing_cats = (
             set(cats_df["Category_Name"].str.strip().tolist())
@@ -114,19 +217,24 @@ try:
         missing_cats = unique_cats_from_parts - existing_cats
 
         if missing_cats:
-            sh = get_spreadsheet_connection()
-            cat_ws = sh.worksheet("Categories")
-            new_rows = [[cat, "", str(date.today())] for cat in sorted(missing_cats)]
-            cat_ws.append_rows(new_rows, value_input_option="USER_ENTERED")
+            for cat in sorted(missing_cats):
+                insert_record(
+                    "categories",
+                    {
+                        "category_name": cat,
+                        "description": "",
+                        "created_date": str(date.today()),
+                    },
+                )
             st.cache_data.clear()
 except Exception:
     pass  # Silent fail — don't crash the page if sync fails
 
 st.subheader("Current Stock")
 try:
-    parts_tab_records = fetch_table("parts")
+    parts_tab_records = parts
 except Exception:
-    parts_tab_records = fetch_tab(PARTS_TAB)
+    parts_tab_records = []
 
 df = pd.DataFrame(parts_tab_records)
 if df.empty:
@@ -204,13 +312,12 @@ with st.form("add_category_form", clear_on_submit=True):
             if category_name.strip().lower() in existing:
                 st.error("Category already exists.")
             else:
-                append_record(
-                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
-                    CATEGORIES_HEADERS,
+                insert_record(
+                    "categories",
                     {
-                        "Category_Name": category_name.strip(),
-                        "Description": category_description.strip(),
-                        "Created_Date": date.today().isoformat(),
+                        "category_name": category_name.strip(),
+                        "description": category_description.strip(),
+                        "created_date": date.today().isoformat(),
                     },
                 )
                 st.success("Category added.")
@@ -283,20 +390,79 @@ else:
                 if existing_row:
                     payload["Quantity"] = str(to_int(existing_row.get("Quantity", "0")) + int(quantity))
                     update_record(
-                        get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                        "parts",
+                        {
+                            "cid": payload.get("cid", ""),
+                            "category": payload.get("Category", ""),
+                            "part_name": payload.get("Part_Name", ""),
+                            "unit_sale_price": payload.get("Unit_Sale_Price", ""),
+                            "quantity": payload.get("Quantity", ""),
+                            "status": payload.get("status", ""),
+                            "date_added": payload.get("Date_Added", ""),
+                            "legacy_id": payload.get("Legacy_ID", ""),
+                            "price_type": payload.get("Price_Type", ""),
+                            "box_number": payload.get("Box_Number", ""),
+                            "supplier_name": payload.get("Supplier_Name", ""),
+                            "image": payload.get("image", ""),
+                        },
+                        "id",
                         existing_row["_row"],
-                        PARTS_HEADERS,
-                        payload,
                     )
                     upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
                     st.success("Existing Part + Supplier updated with added quantity.")
                 else:
-                    append_record(
-                        get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
-                        PARTS_HEADERS,
-                        payload,
+                    insert_record(
+                        "parts",
+                        {
+                            "cid": payload.get("cid", ""),
+                            "category": payload.get("Category", ""),
+                            "part_name": payload.get("Part_Name", ""),
+                            "unit_sale_price": payload.get("Unit_Sale_Price", ""),
+                            "quantity": payload.get("Quantity", ""),
+                            "status": payload.get("status", ""),
+                            "date_added": payload.get("Date_Added", ""),
+                            "legacy_id": payload.get("Legacy_ID", ""),
+                            "price_type": payload.get("Price_Type", ""),
+                            "box_number": payload.get("Box_Number", ""),
+                            "supplier_name": payload.get("Supplier_Name", ""),
+                            "image": payload.get("image", ""),
+                        },
                     )
+<<<<<<< Updated upstream
                     upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
+=======
+                    # Also save supplier as a contact if phone/email provided
+                    _sname = payload.get("Supplier_Name", "").strip()
+                    _sphone = supplier_phone.strip() if supplier_phone else ""
+                    _semail = supplier_email.strip() if supplier_email else ""
+                    if _sname and (_sphone or _semail):
+                        from utils.customer_helpers import upsert_supplier_contact
+                        upsert_supplier_contact(_sname, _sphone, _semail)
+                    # Auto-insert purchase record so Daily Activity reflects this addition
+                    if int(quantity) > 0:
+                        insert_record("purchase_records", {
+                            "date": purchase_date.isoformat(),
+                            "part_name": part_name.strip(),
+                            "category": form_category,
+                            "supplier_name": supplier_name.strip(),
+                            "quantity_purchased": str(int(quantity)),
+                            "purchase_invoice_number": "STOCK-ADD",
+                            "purchase_price_per_unit": f"{float(unit_purchase_price):.2f}",
+                            "total_purchase_value": f"{float(unit_purchase_price) * int(quantity):.2f}",
+                        })
+                    # Auto-insert purchase record so Daily Activity reflects this addition
+                    if int(quantity) > 0:
+                        insert_record("purchase_records", {
+                            "date": purchase_date.isoformat(),
+                            "part_name": part_name.strip(),
+                            "category": form_category,
+                            "supplier_name": supplier_name.strip(),
+                            "quantity_purchased": str(int(quantity)),
+                            "purchase_invoice_number": "STOCK-ADD",
+                            "purchase_price_per_unit": f"{float(unit_purchase_price):.2f}",
+                            "total_purchase_value": f"{float(unit_purchase_price) * int(quantity):.2f}",
+                        })
+>>>>>>> Stashed changes
                     st.success("Part added.")
                 st.rerun()
 
@@ -372,21 +538,33 @@ else:
                     "Part_Documents": row.get("Part_Documents", ""),
                 }
                 update_record(
-                    get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                    "parts",
+                    {
+                        "cid": payload.get("cid", ""),
+                        "category": payload.get("Category", ""),
+                        "part_name": payload.get("Part_Name", ""),
+                        "unit_sale_price": payload.get("Unit_Sale_Price", ""),
+                        "quantity": payload.get("Quantity", ""),
+                        "status": payload.get("status", ""),
+                        "date_added": payload.get("Date_Added", ""),
+                        "legacy_id": payload.get("Legacy_ID", ""),
+                        "price_type": payload.get("Price_Type", ""),
+                        "box_number": payload.get("Box_Number", ""),
+                        "supplier_name": payload.get("Supplier_Name", ""),
+                        "image": payload.get("image", ""),
+                    },
+                    "id",
                     row["_row"],
-                    PARTS_HEADERS,
-                    payload,
                 )
-            append_record(
-                get_or_create_worksheet(spreadsheet, PRICE_HISTORY_TAB, PRICE_HISTORY_HEADERS),
-                PRICE_HISTORY_HEADERS,
+            insert_record(
+                "price_history",
                 {
-                    "Date": date.today().isoformat(),
-                    "Part_Name": selected_part,
-                    "Supplier_Name": selected_supplier,
-                    "Old_Price": f"{old_price:.2f}",
-                    "New_Price": f"{float(new_price):.2f}",
-                    "Updated_By": st.session_state.get("username", "unknown"),
+                    "date": date.today().isoformat(),
+                    "part_name": selected_part,
+                    "supplier_name": selected_supplier,
+                    "old_price": f"{old_price:.2f}",
+                    "new_price": f"{float(new_price):.2f}",
+                    "updated_by": st.session_state.get("username", "unknown"),
                 },
             )
             if not keep_history:
@@ -399,9 +577,9 @@ st.subheader("Section E - Daily Activity")
 activity_date = st.date_input("Select Date", value=date.today())
 activity_key = activity_date.isoformat()
 
-purchases_on_date = [r for r in purchase_records if str(r.get("Date", "")).strip() == activity_key]
-sales_on_date = [r for r in sales_records if str(r.get("Date", "")).strip() == activity_key]
-returns_on_date = [r for r in returns_records if str(r.get("Date", "")).strip() == activity_key]
+purchases_on_date = [r for r in purchase_records if str(r.get("date", "") or r.get("Date", "")).strip() == activity_key]
+sales_on_date = [r for r in sales_records if str(r.get("date", "") or r.get("Date", "")).strip() == activity_key]
+returns_on_date = [r for r in returns_records if str(r.get("date", "") or r.get("Date", "")).strip() == activity_key]
 
 st.markdown("Parts added/received on selected date")
 if purchases_on_date:
@@ -515,10 +693,23 @@ if check_admin_access():
                         payload = {header: str(row.get(header, "") or "") for header in PARTS_HEADERS}
                         payload["Category"] = assignments.get(row_id, payload.get("Category", ""))
                         update_record(
-                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                            "parts",
+                            {
+                                "cid": payload.get("cid", ""),
+                                "category": payload.get("Category", ""),
+                                "part_name": payload.get("Part_Name", ""),
+                                "unit_sale_price": payload.get("Unit_Sale_Price", ""),
+                                "quantity": payload.get("Quantity", ""),
+                                "status": payload.get("status", ""),
+                                "date_added": payload.get("Date_Added", ""),
+                                "legacy_id": payload.get("Legacy_ID", ""),
+                                "price_type": payload.get("Price_Type", ""),
+                                "box_number": payload.get("Box_Number", ""),
+                                "supplier_name": payload.get("Supplier_Name", ""),
+                                "image": payload.get("image", ""),
+                            },
+                            "id",
                             row_id,
-                            PARTS_HEADERS,
-                            payload,
                         )
                         updated += 1
                     st.success(f"Updated category for {updated} parts.")
@@ -551,14 +742,14 @@ if check_admin_access():
         with cat_col1:
             if st.button("Update Category", key="admin_update_category"):
                 update_record(
-                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
-                    selected_category_row["_row"],
-                    CATEGORIES_HEADERS,
+                    "categories",
                     {
-                        "Category_Name": selected_category_name,
-                        "Description": edited_description.strip(),
-                        "Created_Date": selected_category_row.get("Created_Date", "").strip() or date.today().isoformat(),
+                        "category_name": selected_category_name,
+                        "description": edited_description.strip(),
+                        "created_date": selected_category_row.get("Created_Date", "").strip() or date.today().isoformat(),
                     },
+                    "id",
+                    selected_category_row["_row"],
                 )
                 st.success("Category updated.")
                 st.rerun()
@@ -566,7 +757,8 @@ if check_admin_access():
         with cat_col2:
             if st.button("Delete Category", key="admin_delete_category"):
                 delete_record(
-                    get_or_create_worksheet(spreadsheet, CATEGORIES_TAB, CATEGORIES_HEADERS),
+                    "categories",
+                    "id",
                     selected_category_row["_row"],
                 )
                 st.success("Category deleted from Categories sheet.")
@@ -619,23 +811,23 @@ if check_admin_access():
                 if st.button("Save Part Changes", key="admin_update_part"):
                     for row in selected_part_rows:
                         update_record(
-                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
-                            row["_row"],
-                            PARTS_HEADERS,
+                            "parts",
                             {
-                                "Part_Name": row.get("Part_Name", "").strip(),
                                 "cid": row.get("cid", "").strip(),
-                                "Category": row.get("Category", "").strip(),
-                                "Unit_Sale_Price": f"{float(edit_sale_price):.2f}",
-                                "Quantity": str(to_int(row.get("Quantity", "0"))),
+                                "category": row.get("Category", "").strip(),
+                                "part_name": row.get("Part_Name", "").strip(),
+                                "unit_sale_price": f"{float(edit_sale_price):.2f}",
+                                "quantity": str(to_int(row.get("Quantity", "0"))),
                                 "status": row.get("status", "").strip(),
-                                "Date_Added": row.get("Date_Added", "").strip(),
-                                "Legacy_ID": row.get("Legacy_ID", "").strip(),
-                                "Price_Type": row.get("Price_Type", "").strip(),
-                                "Box_Number": row.get("Box_Number", "").strip(),
-                                "Supplier_Name": row.get("Supplier_Name", "").strip(),
+                                "date_added": row.get("Date_Added", "").strip(),
+                                "legacy_id": row.get("Legacy_ID", "").strip(),
+                                "price_type": row.get("Price_Type", "").strip(),
+                                "box_number": row.get("Box_Number", "").strip(),
+                                "supplier_name": row.get("Supplier_Name", "").strip(),
                                 "image": updated_image_b64 if updated_image_b64 else row.get("image", ""),
                             },
+                            "id",
+                            row["_row"],
                         )
                     st.success("Part details updated for all supplier rows.")
                     st.rerun()
@@ -644,7 +836,8 @@ if check_admin_access():
                 if st.button("Delete Part", key="admin_delete_part"):
                     for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
                         delete_record(
-                            get_or_create_worksheet(spreadsheet, PARTS_TAB, PARTS_HEADERS),
+                            "parts",
+                            "id",
                             row["_row"],
                         )
                     st.success("Part deleted from stock records.")

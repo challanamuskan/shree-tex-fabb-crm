@@ -4,13 +4,14 @@ import pandas as pd
 import streamlit as st
 
 from utils.auth import require_login, is_admin
-require_login()
-
 from utils.supabase_db import fetch_table, insert_record, update_record, delete_record
-from utils.file_handler import upload_and_scan_widget
 from utils.ui import init_page
 
-STATUS_OPTIONS = ["Paid", "Pending", "Overdue"]
+require_login()
+init_page("Payments")
+st.title("Payments")
+
+STATUS_OPTIONS = ["Pending", "Paid", "Overdue"]
 
 
 def to_float(value):
@@ -27,178 +28,150 @@ def parse_date(value):
         return date.today()
 
 
-def parse_scanned_date(value):
-    value_str = str(value).strip()
-    if not value_str:
-        return date.today()
-
-    date_formats = [
-        "%Y-%m-%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%d-%m-%y",
-        "%d/%m/%y",
-        "%d %b %Y",
-        "%d %B %Y",
-        "%d %b %y",
-    ]
-    for fmt in date_formats:
-        try:
-            return datetime.strptime(value_str, fmt).date()
-        except ValueError:
-            continue
-    return date.today()
-
-
 def is_overdue(record):
     due = parse_date(record.get("due_date", ""))
     status = str(record.get("status", "")).strip().lower()
     return due < date.today() and status != "paid"
 
 
-init_page("Payments")
-st.title("Payments")
-
 records = fetch_table("payments")
+customers = fetch_table("customers")
+sales = fetch_table("sales_records")
 
+customer_names = sorted({str(c.get("name", "")).strip() for c in customers if str(c.get("name", "")).strip()})
+# Also pull unique party names from sales as additional source
+sales_parties = sorted({str(s.get("party_name", "")).strip() for s in sales if str(s.get("party_name", "")).strip()})
+all_customer_options = sorted(set(customer_names + sales_parties))
+
+# ── Payment Dues Overview ─────────────────────────────────────────────────────
 st.subheader("Payment Dues")
 if records:
-    df = pd.DataFrame(records).drop(columns=["receipt_document"], errors="ignore")
-    df = df.rename(
-        columns={
-            "customer_name": "Customer Name",
-            "invoice_number": "Invoice Number",
-            "amount": "Amount",
-            "due_date": "Due Date",
-            "status": "Status",
-        }
-    )
+    df = pd.DataFrame(records)
+    df = df.drop(columns=["receipt_document", "created_at"], errors="ignore")
+    df = df.rename(columns={
+        "customer_name": "Customer Name",
+        "invoice_number": "Invoice Number",
+        "amount": "Amount",
+        "due_date": "Due Date",
+        "status": "Status",
+    })
 
     def highlight_overdue(row):
         record = row.to_dict()
-        if is_overdue(record):
-            return ["background-color: #fecaca; color: #7f1d1d;"] * len(row)
+        due_str = str(record.get("Due Date", "")).strip()
+        status = str(record.get("Status", "")).strip().lower()
+        try:
+            due = datetime.strptime(due_str, "%Y-%m-%d").date()
+            if due < date.today() and status != "paid":
+                return ["background-color: #fecaca; color: #7f1d1d;"] * len(row)
+        except (TypeError, ValueError):
+            pass
         return [""] * len(row)
 
-    styled = df.style.apply(highlight_overdue, axis=1)
-    
-    with st.expander(f"📋 View All Payment Dues ({len(records)} records) — click to expand", expanded=False):
-        st.dataframe(styled, use_container_width=True, hide_index=True)
-
-    overdue_count = sum(1 for r in records if is_overdue(r))
-    pending_amount = sum(
-        to_float(r.get("amount", "0"))
-        for r in records
-        if str(r.get("status", "")).strip().lower() != "paid"
+    display_cols = [c for c in ["Customer Name", "Invoice Number", "Amount", "Due Date", "Status"] if c in df.columns]
+    st.dataframe(
+        df[display_cols].style.apply(highlight_overdue, axis=1),
+        use_container_width=True,
+        hide_index=True,
     )
-    st.caption(f"Pending amount: Rs {pending_amount:,.2f} | Overdue invoices: {overdue_count}")
+
+    total_pending = sum(to_float(r.get("amount", 0)) for r in records if str(r.get("status", "")).strip().lower() != "paid")
+    st.metric("Total Pending Amount", f"Rs {total_pending:,.2f}")
 else:
-    st.info("No payment records found.")
+    st.info("No payment records yet.")
 
 st.markdown("---")
-st.subheader("Add Payment")
-with st.form("add_payment_form", clear_on_submit=True):
-    bill_b64, scan_data = upload_and_scan_widget("Payment Receipt", "payment_receipt")
-    scanned_amount = to_float(scan_data.get("amount", ""))
-    scanned_due_date = parse_scanned_date(scan_data.get("date", ""))
 
-    c1, c2 = st.columns(2)
-    with c1:
-        customer_name = st.text_input("Customer Name", value=scan_data.get("party_name", ""))
-        invoice_number = st.text_input("Invoice Number", value=scan_data.get("invoice_number", ""))
-        amount = st.number_input("Amount", min_value=0.0, step=0.01, format="%.2f", value=scanned_amount)
-    with c2:
-        due_date = st.date_input("Due Date", value=scanned_due_date)
-        status = st.selectbox("Status", STATUS_OPTIONS, index=1)
+# ── Add Payment ───────────────────────────────────────────────────────────────
+st.subheader("Add Payment Record")
+
+# Customer selection outside form for reactivity
+cust_options = ["-- Type new --"] + all_customer_options
+cust_select = st.selectbox("Customer (choose existing or type new)", options=cust_options, key="pay_cust_select")
+cust_new = st.text_input("Or type new customer name (overrides above if filled)", key="pay_cust_new")
+prefill_customer = cust_new.strip() if cust_new.strip() else (cust_select if cust_select != "-- Type new --" else "")
+
+# Auto-fill invoice from sales if customer selected
+prefill_invoice = ""
+if prefill_customer and prefill_customer in all_customer_options:
+    matching_sales = [s for s in sales if str(s.get("party_name", "")).strip() == prefill_customer]
+    if matching_sales:
+        latest = sorted(matching_sales, key=lambda x: str(x.get("date", "")), reverse=True)[0]
+        prefill_invoice = str(latest.get("sale_invoice_number", "")).strip()
+
+with st.form("add_payment_form", clear_on_submit=True):
+    customer_name = st.text_input("Customer Name", value=prefill_customer)
+    invoice_number = st.text_input("Invoice Number", value=prefill_invoice)
+    amount = st.number_input("Amount (Rs)", min_value=0.0, step=0.01, value=0.0, format="%.2f")
+    due_date = st.date_input("Due Date", value=date.today())
+    status = st.selectbox("Status", STATUS_OPTIONS)
 
     add_submit = st.form_submit_button("Add Payment")
     if add_submit:
-        if not customer_name.strip() or not invoice_number.strip():
-            st.error("Customer Name and Invoice Number are required.")
+        if not customer_name.strip():
+            st.error("Customer Name is required.")
+        elif not invoice_number.strip():
+            st.error("Invoice Number is required.")
+        elif amount <= 0:
+            st.error("Amount must be greater than 0.")
         else:
-            effective_status = status
-            if status != "Paid" and due_date < date.today():
-                effective_status = "Overdue"
-
-            payload = {
+            insert_record("payments", {
                 "customer_name": customer_name.strip(),
                 "invoice_number": invoice_number.strip(),
                 "amount": f"{float(amount):.2f}",
                 "due_date": due_date.isoformat(),
-                "status": effective_status,
-                "receipt_document": bill_b64,
-            }
-            try:
-                insert_record("payments", payload)
-                st.success("Payment record added successfully.")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Error adding payment: {exc}")
+                "status": status,
+            })
+            st.success("✅ Payment record added.")
+            st.rerun()
 
 st.markdown("---")
+
+# ── Edit / Delete Payment ─────────────────────────────────────────────────────
 st.subheader("Edit / Delete Payment")
-if records:
-    if is_admin():
-        option_map = {
-            f"{r.get('invoice_number', '')} | {r.get('customer_name', '')}": r
-            for r in records
-        }
-        selected_key = st.selectbox("Select payment", options=list(option_map.keys()))
-        selected = option_map[selected_key]
-
-        with st.form("edit_payment_form"):
-            c1, c2 = st.columns(2)
-            with c1:
-                e_customer_name = st.text_input("Customer Name", value=selected.get("customer_name", ""))
-                e_invoice_number = st.text_input("Invoice Number", value=selected.get("invoice_number", ""))
-                e_amount = st.number_input(
-                    "Amount",
-                    min_value=0.0,
-                    step=0.01,
-                    format="%.2f",
-                    value=to_float(selected.get("amount", "0")),
-                )
-            with c2:
-                e_due_date = st.date_input("Due Date", value=parse_date(selected.get("due_date", "")))
-                existing_status = selected.get("status", "Pending") if selected.get("status", "Pending") in STATUS_OPTIONS else "Pending"
-                e_status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(existing_status))
-
-            update_submit = st.form_submit_button("Update Payment")
-            if update_submit:
-                if not e_customer_name.strip() or not e_invoice_number.strip():
-                    st.error("Customer Name and Invoice Number are required.")
-                else:
-                    effective_status = e_status
-                    if e_status != "Paid" and e_due_date < date.today():
-                        effective_status = "Overdue"
-
-                    payload = {
-                        "customer_name": e_customer_name.strip(),
-                        "invoice_number": e_invoice_number.strip(),
-                        "amount": f"{float(e_amount):.2f}",
-                        "due_date": e_due_date.isoformat(),
-                        "status": effective_status,
-                        "receipt_document": selected.get("receipt_document", ""),
-                    }
-                    try:
-                        update_record("payments", payload, "id", selected.get("id"))
-                        st.success("Payment updated successfully.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Error updating payment: {exc}")
-
-        confirm_delete = st.checkbox("Confirm delete selected payment")
-        if st.button("Delete Payment", type="secondary"):
-            if not confirm_delete:
-                st.error("Please confirm deletion first.")
-            else:
-                try:
-                    delete_record("payments", "id", selected.get("id"))
-                    st.success("Payment deleted successfully.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Error deleting payment: {exc}")
-    else:
-        st.warning("🔐 Admin login required to edit or delete records.")
+if not is_admin():
+    st.info("🔐 Admin access required.")
+elif not records:
+    st.info("No payment records to edit.")
 else:
-    st.info("Add a payment to enable edit/delete actions.")
+    option_map = {}
+    for rec in records:
+        inv = str(rec.get("invoice_number", "") or "").strip()
+        cust = str(rec.get("customer_name", "") or "").strip()
+        amt = str(rec.get("amount", "") or "").strip()
+        label = f"{cust} | {inv} | Rs {amt}"
+        option_map[label] = rec
+
+    selected_key = st.selectbox("Select payment", options=list(option_map.keys()), key="edit_pay_select")
+    selected = option_map[selected_key]
+
+    with st.form("edit_payment_form"):
+        e_customer = st.text_input("Customer Name", value=str(selected.get("customer_name", "") or ""))
+        e_invoice = st.text_input("Invoice Number", value=str(selected.get("invoice_number", "") or ""))
+        e_amount = st.number_input("Amount (Rs)", min_value=0.0, step=0.01, value=to_float(selected.get("amount", "0")), format="%.2f")
+        e_due = st.date_input("Due Date", value=parse_date(selected.get("due_date", "")))
+        current_status = str(selected.get("status", "Pending") or "Pending")
+        if current_status not in STATUS_OPTIONS:
+            current_status = "Pending"
+        e_status = st.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index(current_status))
+
+        update_submit = st.form_submit_button("Update Payment")
+        if update_submit:
+            update_record("payments", {
+                "customer_name": e_customer.strip(),
+                "invoice_number": e_invoice.strip(),
+                "amount": f"{float(e_amount):.2f}",
+                "due_date": e_due.isoformat(),
+                "status": e_status,
+            }, "id", selected.get("id"))
+            st.success("✅ Payment updated.")
+            st.rerun()
+
+    confirm_delete = st.checkbox("Confirm delete this payment", key="pay_del_confirm")
+    if st.button("Delete Payment", type="secondary"):
+        if not confirm_delete:
+            st.error("Tick the confirm box first.")
+        else:
+            delete_record("payments", "id", selected.get("id"))
+            st.success("Deleted.")
+            st.rerun()

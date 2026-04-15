@@ -92,7 +92,11 @@ def extract_text_from_file(uploaded_file) -> str:
             return text
 
         image = Image.open(uploaded_file)
-        text = pytesseract.image_to_string(image)
+        processed = _preprocess_image_for_ocr(image)
+        try:
+            text = pytesseract.image_to_string(processed, lang="eng+hin", config="--psm 6 --oem 3")
+        except Exception:
+            text = pytesseract.image_to_string(processed, lang="eng", config="--psm 6 --oem 3")
         return text
     except Exception:
         return ""

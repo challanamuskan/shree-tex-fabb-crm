@@ -6,18 +6,8 @@ import streamlit as st
 from utils.auth import require_login, is_admin
 require_login()
 
-from utils.constants import CONTACTS_HEADERS, CONTACTS_TAB
-from utils.supabase_db import (
-    append_record,
-    delete_record,
-    fetch_sheet_data_by_name,
-    get_or_create_worksheet,
-    update_record,
-)
-from utils.ui import (
-    get_spreadsheet_connection,
-    init_page,
-)
+from utils.supabase_db import fetch_table, insert_record, update_record, delete_record
+from utils.ui import init_page
 
 LEAD_STATUS_OPTIONS = ["New", "Contacted", "Interested", "Negotiation", "Won", "Lost"]
 
@@ -32,12 +22,21 @@ def parse_date(value):
 init_page("Customers & Leads")
 st.title("Customers & Leads")
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
-
-worksheet = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-records = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
+raw_records = fetch_table("customers_leads")
+records = [
+    {
+        "_row": r.get("id"),
+        "Name": str(r.get("name", "") or ""),
+        "Business Name": str(r.get("business_name", "") or ""),
+        "Phone": str(r.get("phone", "") or ""),
+        "Email": str(r.get("email", "") or ""),
+        "Machine Type": str(r.get("machine_type", "") or ""),
+        "Lead Status": str(r.get("lead_status", "") or ""),
+        "Follow-up Date": str(r.get("follow_up_date", "") or ""),
+        "Notes": str(r.get("notes", "") or ""),
+    }
+    for r in raw_records
+]
 
 st.subheader("Contacts")
 if records:
@@ -68,17 +67,17 @@ with st.form("add_contact_form", clear_on_submit=True):
             st.error("Name is required.")
         else:
             payload = {
-                "Name": name.strip(),
-                "Business Name": business_name.strip(),
-                "Phone": phone.strip(),
-                "Email": email.strip(),
-                "Machine Type": machine_type.strip(),
-                "Lead Status": lead_status,
-                "Follow-up Date": follow_up.isoformat(),
-                "Notes": notes.strip(),
+                "name": name.strip(),
+                "business_name": business_name.strip(),
+                "phone": phone.strip(),
+                "email": email.strip(),
+                "machine_type": machine_type.strip(),
+                "lead_status": lead_status,
+                "follow_up_date": follow_up.isoformat(),
+                "notes": notes.strip(),
             }
             try:
-                append_record(worksheet, CONTACTS_HEADERS, payload)
+                insert_record("customers_leads", payload)
                 st.success("Contact added successfully.")
                 st.rerun()
             except Exception as exc:
@@ -116,17 +115,17 @@ if records:
                     st.error("Name is required.")
                 else:
                     payload = {
-                        "Name": e_name.strip(),
-                        "Business Name": e_business_name.strip(),
-                        "Phone": e_phone.strip(),
-                        "Email": e_email.strip(),
-                        "Machine Type": e_machine_type.strip(),
-                        "Lead Status": e_lead_status,
-                        "Follow-up Date": e_follow_up.isoformat(),
-                        "Notes": e_notes.strip(),
+                        "name": e_name.strip(),
+                        "business_name": e_business_name.strip(),
+                        "phone": e_phone.strip(),
+                        "email": e_email.strip(),
+                        "machine_type": e_machine_type.strip(),
+                        "lead_status": e_lead_status,
+                        "follow_up_date": e_follow_up.isoformat(),
+                        "notes": e_notes.strip(),
                     }
                     try:
-                        update_record(worksheet, selected["_row"], CONTACTS_HEADERS, payload)
+                        update_record("customers_leads", payload, "id", selected["_row"])
                         st.success("Contact updated successfully.")
                         st.rerun()
                     except Exception as exc:
@@ -138,7 +137,7 @@ if records:
                 st.error("Please confirm deletion first.")
             else:
                 try:
-                    delete_record(worksheet, selected["_row"])
+                    delete_record("customers_leads", "id", selected["_row"])
                     st.success("Contact deleted successfully.")
                     st.rerun()
                 except Exception as exc:

@@ -6,17 +6,9 @@ import streamlit as st
 from utils.auth import require_login, is_admin
 require_login()
 
-from utils.constants import (
-    CONTACTS_HEADERS,
-    CONTACTS_TAB,
-    EMAIL_LOG_HEADERS,
-    EMAIL_LOG_TAB,
-    PAYMENTS_HEADERS,
-    PAYMENTS_TAB,
-)
 from utils.gmail_sender import get_gmail_service, send_email
-from utils.supabase_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet
-from utils.ui import get_spreadsheet_connection, init_page
+from utils.supabase_db import fetch_table, insert_record
+from utils.ui import init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
 EMAIL_TYPE = "Payment Reminder"
@@ -52,52 +44,48 @@ def build_reminder_body(name, amount, due_date):
     )
 
 
-def log_email(email_log_ws, row):
-    append_record(email_log_ws, EMAIL_LOG_HEADERS, row)
+def log_email(row):
+    insert_record("email_log", row)
 
 
 init_page("Payment Reminders")
 st.title("Payment Reminders")
 
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
+payments = [p for p in (fetch_table("payments") or []) if p is not None]
+contacts = [c for c in (fetch_table("customers_leads") or []) if c is not None]
 
-payments_ws = get_or_create_worksheet(spreadsheet, PAYMENTS_TAB, PAYMENTS_HEADERS)
-contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
-
-payments = fetch_sheet_data_by_name(PAYMENTS_TAB, PAYMENTS_HEADERS)
-contacts = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
-
-contacts_by_name = {c.get("Name", "").strip().lower(): c for c in contacts}
+contacts_by_name = {c.get("name", "").strip().lower(): c for c in contacts}
 
 rows = []
 for payment in payments:
-    status = payment.get("Status", "").strip().lower()
+    status = str(payment.get("status", "")).strip().lower()
     if status not in {"pending", "overdue"}:
         continue
 
-    due = parse_date(payment.get("Due Date", ""))
+    due = parse_date(payment.get("due_date", ""))
     if due is None:
         continue
 
-    name = payment.get("Customer Name", "").strip()
+    name = str(payment.get("customer_name") or "").strip()
     contact = contacts_by_name.get(name.lower(), {})
-    email = contact.get("Email", "").strip()
-    phone = contact.get("Phone", "").strip()
-    business_name = contact.get("Business Name", "").strip()
+    email = str(contact.get("email") or "").strip()
+    phone = str(contact.get("phone") or "").strip()
+    business_name = str(contact.get("business_name") or "").strip()
     days_overdue = max((date.today() - due).days, 0)
 
     rows.append(
         {
             "Select": False,
             "Name": name,
+            "name": name,
             "Business Name": business_name,
+            "business_name": business_name,
             "Email": email,
+            "email": email,
             "Phone": phone,
-            "Invoice Number": payment.get("Invoice Number", "").strip(),
-            "Amount Due": to_float(payment.get("Amount", "0")),
+            "phone": phone,
+            "Invoice Number": payment.get("invoice_number", "").strip(),
+            "Amount Due": to_float(payment.get("amount", "0")),
             "Due Date": due.isoformat(),
             "Days Overdue": days_overdue,
         }
@@ -168,7 +156,7 @@ send_mode = st.radio(
 def personalize(text, row):
     result = text
     result = result.replace("[Invoice Number]", str(row["Invoice Number"]))
-    result = result.replace("[Customer Name]", str(row["Name"]))
+    result = result.replace("[Customer Name]", str(row.get("name", "")))
     result = result.replace("[Business Name]", str(row["Business Name"]))
     result = result.replace("[Amount]", f"{float(row['Amount Due']):,.2f}")
     result = result.replace("[Due Date]", str(row["Due Date"]))
@@ -192,9 +180,9 @@ if st.button("Send Reminders", type="primary"):
             st.stop()
 
     for _, row in selected.iterrows():
-        recipient_name = str(row["Name"]).strip()
-        recipient_email = str(row["Email"]).strip()
-        recipient_phone = str(row["Phone"]).strip()
+        recipient_name = str(row.get("name", "")).strip()
+        recipient_email = str(row.get("email", "")).strip()
+        recipient_phone = str(row.get("phone", "")).strip()
         subject = personalize(subject_template, row)
         body = personalize(body_template, row)
         whatsapp_msg = personalize(whatsapp_template, row)
@@ -209,15 +197,14 @@ if st.button("Send Reminders", type="primary"):
                 email_error = "Missing recipient email in Customers & Leads sheet."
                 st.error(f"{recipient_name}: {email_error}")
                 log_email(
-                    email_log_ws,
                     {
-                        "Timestamp": timestamp,
-                        "Email Type": EMAIL_TYPE,
-                        "Recipient Name": recipient_name,
-                        "Recipient Email": "",
-                        "Subject": subject,
-                        "Status": "Failed",
-                        "Error": email_error,
+                        "timestamp": timestamp,
+                        "email_type": EMAIL_TYPE,
+                        "recipient_name": recipient_name,
+                        "recipient_email": "",
+                        "subject": subject,
+                        "status": "Failed",
+                        "error": email_error,
                     },
                 )
                 email_status = "Failed"
@@ -226,15 +213,14 @@ if st.button("Send Reminders", type="primary"):
                     send_email(gmail_service, recipient_email, subject, body)
                     st.success(f"Email sent to {recipient_name} ({recipient_email})")
                     log_email(
-                        email_log_ws,
                         {
-                            "Timestamp": timestamp,
-                            "Email Type": EMAIL_TYPE,
-                            "Recipient Name": recipient_name,
-                            "Recipient Email": recipient_email,
-                            "Subject": subject,
-                            "Status": "Sent",
-                            "Error": "",
+                            "timestamp": timestamp,
+                            "email_type": EMAIL_TYPE,
+                            "recipient_name": recipient_name,
+                            "recipient_email": recipient_email,
+                            "subject": subject,
+                            "status": "Sent",
+                            "error": "",
                         },
                     )
                     email_status = "Sent"
@@ -242,15 +228,14 @@ if st.button("Send Reminders", type="primary"):
                     email_error = str(exc)
                     st.error(f"Email failed for {recipient_name}: {email_error}")
                     log_email(
-                        email_log_ws,
                         {
-                            "Timestamp": timestamp,
-                            "Email Type": EMAIL_TYPE,
-                            "Recipient Name": recipient_name,
-                            "Recipient Email": recipient_email,
-                            "Subject": subject,
-                            "Status": "Failed",
-                            "Error": email_error,
+                            "timestamp": timestamp,
+                            "email_type": EMAIL_TYPE,
+                            "recipient_name": recipient_name,
+                            "recipient_email": recipient_email,
+                            "subject": subject,
+                            "status": "Failed",
+                            "error": email_error,
                         },
                     )
                     email_status = "Failed"
