@@ -11,3 +11,7 @@ __pycache__/
 __pycache__/
 .venv/
 *.pyc
+.claude/
+*.bak
+patch_*.py
+ocr_fix.py
