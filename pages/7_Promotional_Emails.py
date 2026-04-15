@@ -13,7 +13,7 @@ from utils.constants import (
     EMAIL_LOG_TAB,
 )
 from utils.gmail_sender import get_gmail_service, send_email
-from utils.supabase_db import append_record, fetch_sheet_data_by_name, get_or_create_worksheet
+from utils.supabase_db import append_record, fetch_sheet_data_by_name, fetch_table, get_or_create_worksheet
 from utils.ui import get_spreadsheet_connection, init_page
 from utils.whatsapp_sender import generate_whatsapp_link
 
@@ -142,7 +142,18 @@ if not spreadsheet:
 contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
 email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
 
-contacts = fetch_sheet_data_by_name(CONTACTS_TAB, CONTACTS_HEADERS)
+# Fetch directly from Supabase customers table; legacy alias "customers_leads" also resolves here
+_raw_contacts = fetch_table("customers")
+contacts = []
+for rec in _raw_contacts:
+    contacts.append({
+        "Name": str(rec.get("name") or rec.get("Name") or "").strip(),
+        "Business Name": str(rec.get("business_name") or rec.get("Business Name") or "").strip(),
+        "Phone": str(rec.get("phone") or rec.get("Phone") or "").strip(),
+        "Email": str(rec.get("email") or rec.get("Email") or "").strip(),
+        "Machine Type": str(rec.get("machine_type") or rec.get("Machine Type") or "").strip(),
+        "Lead Status": str(rec.get("lead_status") or rec.get("Lead Status") or "").strip(),
+    })
 
 audience_rows = []
 for contact in contacts:
@@ -164,7 +175,16 @@ for contact in contacts:
     )
 
 if not audience_rows:
-    st.info("No contacts with email addresses found in Customers & Leads.")
+    if not _raw_contacts:
+        st.warning(
+            "No contacts found in the database. "
+            "Add customers or leads via the **Customers & Leads** page first."
+        )
+    else:
+        st.info(
+            f"{len(_raw_contacts)} contact(s) found but none have a phone or email address. "
+            "Update contact details in the **Customers & Leads** page."
+        )
     st.stop()
 
 all_df = pd.DataFrame(audience_rows)
