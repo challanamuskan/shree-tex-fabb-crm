@@ -428,25 +428,23 @@ else:
                             "image": payload.get("image", ""),
                         },
                     )
-# Also save supplier as a contact if phone/email provided
-                    _sname = payload.get("Supplier_Name", "").strip()
-                    _sphone = supplier_phone.strip() if supplier_phone else ""
-                    _semail = supplier_email.strip() if supplier_email else ""
-                    if _sname and (_sphone or _semail):
-                        from utils.customer_helpers import upsert_supplier_contact
-                        upsert_supplier_contact(_sname, _sphone, _semail)
-                    # Auto-insert purchase record so Daily Activity reflects this addition
-                    if int(quantity) > 0:
-                        insert_record("purchase_records", {
-                            "date": purchase_date.isoformat(),
-                            "part_name": part_name.strip(),
-                            "category": form_category,
-                            "supplier_name": supplier_name.strip(),
-                            "quantity_purchased": str(int(quantity)),
-                            "purchase_invoice_number": "STOCK-ADD",
-                            "purchase_price_per_unit": f"{float(unit_purchase_price):.2f}",
-                            "total_purchase_value": f"{float(unit_purchase_price) * int(quantity):.2f}",
-                        })
+                    upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
+                    # Upload image to Google Drive catalogue (silent if credentials missing)
+                    if image_b64:
+                        try:
+                            from utils.drive_catalogue import upload_part_image_to_drive
+                            drive_url = upload_part_image_to_drive(part_name.strip(), form_category, image_b64)
+                            if drive_url:
+                                # Best-effort update — fetch newly inserted row by part_name + supplier
+                                _new_rows = [
+                                    r for r in fetch_table("parts")
+                                    if r.get("Part_Name", "").strip().lower() == part_name.strip().lower()
+                                    and r.get("Supplier_Name", "").strip().lower() == supplier_name.strip().lower()
+                                ]
+                                if _new_rows:
+                                    update_record("parts", {"image_drive_url": drive_url}, "id", _new_rows[-1]["_row"])
+                        except Exception:
+                            pass
                     # Auto-insert purchase record so Daily Activity reflects this addition
                     if int(quantity) > 0:
                         insert_record("purchase_records", {
@@ -776,35 +774,34 @@ if check_admin_access():
             selected_part_rows = [r for r in part_candidates if r.get("Part_Name", "").strip() == edit_part_name]
             base_row = selected_part_rows[0]
 
-            edit_purchase_price = st.number_input(
-                "Unit Purchase Price",
-                min_value=0.0,
-                step=0.01,
-                value=to_float(base_row.get("Unit_Purchase_Price", "0")),
-                format="%.2f",
-                key="admin_part_purchase_price",
-            )
-            edit_sale_price = st.number_input(
-                "Unit Sale Price",
-                min_value=0.0,
-                step=0.01,
-                value=to_float(base_row.get("Unit_Sale_Price", "0")),
-                format="%.2f",
-                key="admin_part_sale_price",
-            )
-            edit_image_file = st.file_uploader(
-                "Upload Part Image (optional)",
-                type=["jpg", "jpeg", "png", "webp"],
-                key="admin_part_image_upload",
-            )
-
-            updated_image_b64 = ""
-            if edit_image_file is not None:
-                updated_image_b64 = base64.b64encode(edit_image_file.getvalue()).decode()
-
-            part_col1, part_col2 = st.columns(2)
-            with part_col1:
-                if st.button("Save Part Changes", key="admin_update_part"):
+            with st.form("edit_part_form"):
+                edit_purchase_price = st.number_input(
+                    "Unit Purchase Price",
+                    min_value=0.0,
+                    step=0.01,
+                    value=to_float(base_row.get("Unit_Purchase_Price", "0")),
+                    format="%.2f",
+                    key="admin_part_purchase_price",
+                )
+                edit_sale_price = st.number_input(
+                    "Unit Sale Price",
+                    min_value=0.0,
+                    step=0.01,
+                    value=to_float(base_row.get("Unit_Sale_Price", "0")),
+                    format="%.2f",
+                    key="admin_part_sale_price",
+                )
+                edit_image_file = st.file_uploader(
+                    "Upload Part Image (optional)",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key="admin_part_image_upload",
+                )
+                if st.form_submit_button("Save Part Changes"):
+                    updated_image_b64 = (
+                        base64.b64encode(edit_image_file.getvalue()).decode()
+                        if edit_image_file is not None
+                        else ""
+                    )
                     for row in selected_part_rows:
                         update_record(
                             "parts",
@@ -812,6 +809,7 @@ if check_admin_access():
                                 "cid": row.get("cid", "").strip(),
                                 "category": row.get("Category", "").strip(),
                                 "part_name": row.get("Part_Name", "").strip(),
+                                "unit_purchase_price": f"{float(edit_purchase_price):.2f}",
                                 "unit_sale_price": f"{float(edit_sale_price):.2f}",
                                 "quantity": str(to_int(row.get("Quantity", "0"))),
                                 "status": row.get("status", "").strip(),
@@ -828,15 +826,14 @@ if check_admin_access():
                     st.success("Part details updated for all supplier rows.")
                     st.rerun()
 
-            with part_col2:
-                if st.button("Delete Part", key="admin_delete_part"):
-                    for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
-                        delete_record(
-                            "parts",
-                            "id",
-                            row["_row"],
-                        )
-                    st.success("Part deleted from stock records.")
-                    st.rerun()
+            if st.button("Delete Part", key="admin_delete_part"):
+                for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
+                    delete_record(
+                        "parts",
+                        "id",
+                        row["_row"],
+                    )
+                st.success("Part deleted from stock records.")
+                st.rerun()
 else:
     st.info("🔐 Admin access required to edit or delete records.")

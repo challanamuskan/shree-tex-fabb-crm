@@ -457,32 +457,36 @@ def get_dashboard_stats():
     }
 
 
-def upsert_supplier_contact(name: str, phone: str = "", email: str = ""):
-    """Upsert supplier as a contact in the customers table (dedup by name)."""
+def upsert_supplier_contact(name: str, phone: str = "", email: str = "") -> bool:
+    """
+    Insert supplier as a customer contact, deduplicating by phone first, then by name.
+    Returns True if inserted, False if already existed. Non-blocking on exception.
+    """
     name = (name or "").strip()
     if not name:
-        return
+        return False
+    phone = (phone or "").strip()
+    email = (email or "").strip()
     try:
         sb = get_supabase()
-        result = sb.table("customers").select("id,phone,email").ilike("name", name).limit(1).execute()
-        if result.data:
-            existing = result.data[0]
-            update_data = {}
-            if not existing.get("phone") and phone:
-                update_data["phone"] = phone.strip()
-            if not existing.get("email") and email:
-                update_data["email"] = email.strip()
-            if update_data:
-                sb.table("customers").update(update_data).eq("id", existing["id"]).execute()
-        else:
-            sb.table("customers").insert({
-                "name": name,
-                "phone": phone.strip() if phone else "",
-                "email": email.strip() if email else "",
-                "lead_status": "supplier",
-            }).execute()
+        # Dedup by phone first (most reliable unique key)
+        if phone:
+            if sb.table("customers").select("id").eq("phone", phone).execute().data:
+                return False
+        # Dedup by name (case-insensitive)
+        if sb.table("customers").select("id").ilike("name", name).execute().data:
+            return False
+        sb.table("customers").insert({
+            "name": name,
+            "business_name": name,
+            "phone": phone or None,
+            "email": email or None,
+            "lead_status": "Won",
+            "notes": "Auto-added from Stock Manager",
+        }).execute()
+        return True
     except Exception:
-        pass
+        return False  # Non-blocking — supplier dedup must never crash a part save
 
 
 # Backward-compatible aliases still used throughout the app during migration.

@@ -129,7 +129,8 @@ Bhilwara, Rajasthan""",
 init_page("Promotional Emails")
 st.title("Promotional Emails")
 
-contacts = [c for c in (fetch_table("customers") or []) if c is not None]
+_raw_contacts = fetch_table("customers") or []
+contacts = [c for c in _raw_contacts if c is not None]
 
 audience_rows = []
 for contact in contacts:
