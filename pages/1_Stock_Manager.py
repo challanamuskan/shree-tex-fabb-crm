@@ -428,10 +428,7 @@ else:
                             "image": payload.get("image", ""),
                         },
                     )
-<<<<<<< Updated upstream
-                    upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
-=======
-                    # Also save supplier as a contact if phone/email provided
+# Also save supplier as a contact if phone/email provided
                     _sname = payload.get("Supplier_Name", "").strip()
                     _sphone = supplier_phone.strip() if supplier_phone else ""
                     _semail = supplier_email.strip() if supplier_email else ""
@@ -462,7 +459,6 @@ else:
                             "purchase_price_per_unit": f"{float(unit_purchase_price):.2f}",
                             "total_purchase_value": f"{float(unit_purchase_price) * int(quantity):.2f}",
                         })
->>>>>>> Stashed changes
                     st.success("Part added.")
                 st.rerun()
 

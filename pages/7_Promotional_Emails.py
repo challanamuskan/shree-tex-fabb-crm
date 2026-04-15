@@ -7,13 +7,8 @@ from utils.auth import require_login, is_admin
 require_login()
 
 from utils.gmail_sender import get_gmail_service, send_email
-<<<<<<< Updated upstream
-from utils.supabase_db import append_record, fetch_sheet_data_by_name, fetch_table, get_or_create_worksheet
-from utils.ui import get_spreadsheet_connection, init_page
-=======
 from utils.supabase_db import fetch_table, insert_record
 from utils.ui import init_page
->>>>>>> Stashed changes
 from utils.whatsapp_sender import generate_whatsapp_link
 
 EMAIL_TYPE = "Promotional"
@@ -134,29 +129,7 @@ Bhilwara, Rajasthan""",
 init_page("Promotional Emails")
 st.title("Promotional Emails")
 
-<<<<<<< Updated upstream
-spreadsheet = get_spreadsheet_connection()
-if not spreadsheet:
-    st.stop()
-
-contacts_ws = get_or_create_worksheet(spreadsheet, CONTACTS_TAB, CONTACTS_HEADERS)
-email_log_ws = get_or_create_worksheet(spreadsheet, EMAIL_LOG_TAB, EMAIL_LOG_HEADERS)
-
-# Fetch directly from Supabase customers table; legacy alias "customers_leads" also resolves here
-_raw_contacts = fetch_table("customers")
-contacts = []
-for rec in _raw_contacts:
-    contacts.append({
-        "Name": str(rec.get("name") or rec.get("Name") or "").strip(),
-        "Business Name": str(rec.get("business_name") or rec.get("Business Name") or "").strip(),
-        "Phone": str(rec.get("phone") or rec.get("Phone") or "").strip(),
-        "Email": str(rec.get("email") or rec.get("Email") or "").strip(),
-        "Machine Type": str(rec.get("machine_type") or rec.get("Machine Type") or "").strip(),
-        "Lead Status": str(rec.get("lead_status") or rec.get("Lead Status") or "").strip(),
-    })
-=======
 contacts = [c for c in (fetch_table("customers") or []) if c is not None]
->>>>>>> Stashed changes
 
 audience_rows = []
 for contact in contacts:
