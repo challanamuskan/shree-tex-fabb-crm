@@ -32,6 +32,7 @@ from utils.supabase_db import (
     fetch_sheet_data_by_name,
     get_or_create_worksheet,
     update_record,
+    upsert_supplier_contact,
 )
 from utils.ui import check_admin_access, get_spreadsheet_connection, init_page
 
@@ -154,11 +155,25 @@ for cat in categories_list:
         if col not in cat_parts.columns:
             cat_parts[col] = ""
     with st.expander(f"{cat_clean} ({len(cat_parts)} parts)", expanded=False):
-        st.dataframe(
-            cat_parts[["Part_Name", "Quantity", "Unit_Sale_Price", "Supplier_Name"]],
-            use_container_width=True,
-            hide_index=True,
-        )
+        for _, row in cat_parts.iterrows():
+            img_col, info_col = st.columns([1, 5])
+            with img_col:
+                img_b64 = str(row.get("image", "") or "").strip()
+                if img_b64:
+                    img = base64_to_image(img_b64)
+                    if img:
+                        st.image(img, width=64)
+                    else:
+                        st.caption("—")
+                else:
+                    st.caption("—")
+            with info_col:
+                st.markdown(
+                    f"**{row.get('Part_Name', '')}** &nbsp;|&nbsp; "
+                    f"Qty: {row.get('Quantity', '')} &nbsp;|&nbsp; "
+                    f"₹{row.get('Unit_Sale_Price', '')} &nbsp;|&nbsp; "
+                    f"*{row.get('Supplier_Name', '')}*"
+                )
 
 st.subheader("Section A - Category Manager")
 if categories:
@@ -273,6 +288,7 @@ else:
                         PARTS_HEADERS,
                         payload,
                     )
+                    upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
                     st.success("Existing Part + Supplier updated with added quantity.")
                 else:
                     append_record(
@@ -280,6 +296,7 @@ else:
                         PARTS_HEADERS,
                         payload,
                     )
+                    upsert_supplier_contact(supplier_name, supplier_phone, supplier_email)
                     st.success("Part added.")
                 st.rerun()
 
