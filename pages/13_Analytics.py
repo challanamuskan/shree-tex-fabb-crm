@@ -204,7 +204,7 @@ if "party_name" in df.columns and "part_name" in df.columns:
     if not pivot.empty:
         st.caption(f"Showing top 15 customers × top 15 products. {'Revenue in Rs.' if matrix_metric == 'Revenue' else 'Units sold.'}")
         st.dataframe(
-            pivot.style.background_gradient(cmap="YlOrRd", axis=None),
+            pivot,
             use_container_width=True,
         )
         st.caption("🔴 Dark = high value. Empty cell = customer never bought that product → cross-sell opportunity.")
