@@ -302,12 +302,7 @@ for cat in categories_list:
             with img_col:
                 image_url = str(row.get("image_url", "") or "").strip()
                 if image_url:
-                    try:
-                        st.image(_drive_direct_url(image_url), width=64)
-                    except Exception:
-                        st.caption("—")
-                else:
-                    st.caption("—")
+                    st.image(image_url, width=64)
             with info_col:
                 st.markdown(
                     f"**{row.get('Part_Name', '')}** &nbsp;|&nbsp; "
@@ -871,7 +866,7 @@ if check_admin_access():
                                 "price_type": row.get("Price_Type", "").strip(),
                                 "box_number": row.get("Box_Number", "").strip(),
                                 "supplier_name": row.get("Supplier_Name", "").strip(),
-                                "image": row.get("image", ""),
+                                "image_url": row.get("image_url", ""),
                             },
                             "id",
                             row["_row"],
