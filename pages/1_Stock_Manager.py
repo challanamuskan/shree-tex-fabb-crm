@@ -53,6 +53,17 @@ def to_float(value):
         return 0.0
 
 
+def _drive_direct_url(url: str) -> str:
+    """Convert Drive shareable link to direct-access image URL for st.image()."""
+    if "/file/d/" in url:
+        try:
+            file_id = url.split("/file/d/")[1].split("/")[0].split("?")[0]
+            return f"https://drive.google.com/uc?export=view&id={file_id}"
+        except (IndexError, AttributeError):
+            pass
+    return url
+
+
 def serialize_uploaded_files(files):
     encoded = []
     for file_obj in files or []:
@@ -93,6 +104,7 @@ def map_parts(rows):
                 "Box_Number": str(r.get("box_number", "") or ""),
                 "Supplier_Name": str(r.get("supplier_name", "") or ""),
                 "image": str(r.get("image", "") or ""),
+                "image_url": str(r.get("image_url", "") or ""),
                 "Part_Number": "",
                 "Supplier_Phone": "",
                 "Supplier_Email": "",
@@ -184,7 +196,17 @@ def map_returns(rows):
     ]
 
 
-parts = map_parts(fetch_table("parts"))
+_raw_parts = fetch_table("parts")
+parts = map_parts(_raw_parts)
+# Migration check: image_url column must exist in Supabase parts table.
+# If missing, run in Supabase SQL editor:
+#   ALTER TABLE parts ADD COLUMN IF NOT EXISTS image_url TEXT;
+if _raw_parts and "image_url" not in _raw_parts[0] and is_admin():
+    st.warning(
+        "**Drive images disabled** — `image_url` column missing in Supabase. "
+        "Run in Supabase SQL editor: "
+        "`ALTER TABLE parts ADD COLUMN IF NOT EXISTS image_url TEXT;`"
+    )
 categories = map_categories(fetch_table("categories"))
 price_history = map_price_history(fetch_table("price_history"))
 sales_records = map_sales(fetch_table("sales_records"))
@@ -230,6 +252,17 @@ try:
 except Exception:
     pass  # Silent fail — don't crash the page if sync fails
 
+# ── Process any pending part-image upload (queued from Current Stock loop) ──
+_pending = st.session_state.get("_pending_img_upload")
+if "_pending_img_upload" in st.session_state:
+    del st.session_state["_pending_img_upload"]
+if _pending:
+    # Placeholder: image_url always empty, feature coming soon
+    update_record("parts", {"image_url": ""}, "id", _pending["row_id"])
+    st.info(f"Image upload feature coming soon. Upload for **{_pending['part_name']}** queued.")
+
+st.info("📷 **Image upload feature coming soon** — upload widget is available but images are not yet saved.")
+
 st.subheader("Current Stock")
 try:
     parts_tab_records = parts
@@ -264,14 +297,14 @@ for cat in categories_list:
             cat_parts[col] = ""
     with st.expander(f"{cat_clean} ({len(cat_parts)} parts)", expanded=False):
         for _, row in cat_parts.iterrows():
-            img_col, info_col = st.columns([1, 5])
+            row_id = row.get("_row", "")
+            img_col, info_col, upload_col = st.columns([1, 4, 2])
             with img_col:
-                img_b64 = str(row.get("image", "") or "").strip()
-                if img_b64:
-                    img = base64_to_image(img_b64)
-                    if img:
-                        st.image(img, width=64)
-                    else:
+                image_url = str(row.get("image_url", "") or "").strip()
+                if image_url:
+                    try:
+                        st.image(_drive_direct_url(image_url), width=64)
+                    except Exception:
                         st.caption("—")
                 else:
                     st.caption("—")
@@ -282,6 +315,26 @@ for cat in categories_list:
                     f"₹{row.get('Unit_Sale_Price', '')} &nbsp;|&nbsp; "
                     f"*{row.get('Supplier_Name', '')}*"
                 )
+            with upload_col:
+                st.caption("📷 upload image")
+                _img_ver = st.session_state.get("_img_upload_ver", 0)
+                uploaded_img = st.file_uploader(
+                    "Upload image",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"stock_img_{row_id}_v{_img_ver}",
+                    label_visibility="collapsed",
+                )
+                if uploaded_img is not None:
+                    # Queue upload — processed at page-top on next run, widget key
+                    # is versioned so it resets to empty after the rerun.
+                    st.session_state["_pending_img_upload"] = {
+                        "row_id": row_id,
+                        "part_name": str(row.get("Part_Name", "")),
+                        "category": str(row.get("Category", "")),
+                        "data": uploaded_img.getvalue(),
+                    }
+                    st.session_state["_img_upload_ver"] = _img_ver + 1
+                    st.rerun()
 
 st.subheader("Section A - Category Manager")
 if categories:
@@ -432,17 +485,23 @@ else:
                     # Upload image to Google Drive catalogue (silent if credentials missing)
                     if image_b64:
                         try:
-                            from utils.drive_catalogue import upload_part_image_to_drive
-                            drive_url = upload_part_image_to_drive(part_name.strip(), form_category, image_b64)
+                            from utils.drive_catalogue import (
+                                CATALOGUE_FOLDER_ID,
+                                upload_part_image_to_drive,
+                            )
+                            drive_url = upload_part_image_to_drive(
+                                part_name.strip(), form_category, image_b64,
+                                folder_id=CATALOGUE_FOLDER_ID,
+                            )
                             if drive_url:
                                 # Best-effort update — fetch newly inserted row by part_name + supplier
                                 _new_rows = [
                                     r for r in fetch_table("parts")
-                                    if r.get("Part_Name", "").strip().lower() == part_name.strip().lower()
-                                    and r.get("Supplier_Name", "").strip().lower() == supplier_name.strip().lower()
+                                    if str(r.get("part_name", "")).strip().lower() == part_name.strip().lower()
+                                    and str(r.get("supplier_name", "")).strip().lower() == supplier_name.strip().lower()
                                 ]
                                 if _new_rows:
-                                    update_record("parts", {"image_drive_url": drive_url}, "id", _new_rows[-1]["_row"])
+                                    update_record("parts", {"image_url": drive_url}, "id", _new_rows[-1]["id"])
                         except Exception:
                             pass
                     # Auto-insert purchase record so Daily Activity reflects this addition
@@ -774,14 +833,18 @@ if check_admin_access():
             selected_part_rows = [r for r in part_candidates if r.get("Part_Name", "").strip() == edit_part_name]
             base_row = selected_part_rows[0]
 
-            with st.form("edit_part_form"):
+            # Price edit form — file_uploader intentionally excluded to keep
+            # submit button responsive (file_uploader inside st.form breaks it).
+            # Keys are dynamic per part _row so switching parts resets widget state.
+            _part_key = base_row.get("_row", "x")
+            with st.form(f"edit_part_form_{_part_key}"):
                 edit_purchase_price = st.number_input(
                     "Unit Purchase Price",
                     min_value=0.0,
                     step=0.01,
                     value=to_float(base_row.get("Unit_Purchase_Price", "0")),
                     format="%.2f",
-                    key="admin_part_purchase_price",
+                    key=f"admin_part_purchase_price_{_part_key}",
                 )
                 edit_sale_price = st.number_input(
                     "Unit Sale Price",
@@ -789,19 +852,9 @@ if check_admin_access():
                     step=0.01,
                     value=to_float(base_row.get("Unit_Sale_Price", "0")),
                     format="%.2f",
-                    key="admin_part_sale_price",
-                )
-                edit_image_file = st.file_uploader(
-                    "Upload Part Image (optional)",
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key="admin_part_image_upload",
+                    key=f"admin_part_sale_price_{_part_key}",
                 )
                 if st.form_submit_button("Save Part Changes"):
-                    updated_image_b64 = (
-                        base64.b64encode(edit_image_file.getvalue()).decode()
-                        if edit_image_file is not None
-                        else ""
-                    )
                     for row in selected_part_rows:
                         update_record(
                             "parts",
@@ -818,13 +871,34 @@ if check_admin_access():
                                 "price_type": row.get("Price_Type", "").strip(),
                                 "box_number": row.get("Box_Number", "").strip(),
                                 "supplier_name": row.get("Supplier_Name", "").strip(),
-                                "image": updated_image_b64 if updated_image_b64 else row.get("image", ""),
+                                "image": row.get("image", ""),
                             },
                             "id",
                             row["_row"],
                         )
-                    st.success("Part details updated for all supplier rows.")
+                    st.success("Part prices updated.")
                     st.rerun()
+
+            # Image upload — separate from form so it auto-triggers on file select
+            st.markdown("**Upload Part Image**")
+            _admin_img_ver = st.session_state.get("_admin_img_ver", 0)
+            edit_image_file = st.file_uploader(
+                "Upload Part Image (optional)",
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"admin_part_image_upload_v{_admin_img_ver}",
+            )
+            if edit_image_file is not None:
+                # Image upload feature coming soon — queue but don't upload
+                for row in selected_part_rows:
+                    update_record(
+                        "parts",
+                        {"image_url": ""},
+                        "id",
+                        row["_row"],
+                    )
+                st.session_state["_admin_img_ver"] = _admin_img_ver + 1
+                st.info("Image upload feature coming soon. Image queued but not yet saved.")
+                st.rerun()
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
