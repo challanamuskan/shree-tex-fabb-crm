@@ -1,3 +1,4 @@
+from utils.supabase_db import update_part_image
 import base64
 import json
 from datetime import date
@@ -256,8 +257,23 @@ except Exception:
 _pending = st.session_state.get("_pending_img_upload")
 if "_pending_img_upload" in st.session_state:
     del st.session_state["_pending_img_upload"]
+# FIND (around line 130):
 if _pending:
     update_record("parts", {"image_url": ""}, "id", _pending["row_id"])
+
+# REPLACE WITH:
+if _pending:
+    import base64, io
+    from PIL import Image as PILImage
+    try:
+        img = PILImage.open(io.BytesIO(_pending["data"])).convert("RGB")
+        img.thumbnail((150, 150))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=30)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        update_part_image(_pending["row_id"], b64)
+    except Exception as ex:
+        st.error(f"Image save failed: {ex}")
 
 st.subheader("Current Stock")
 try:
