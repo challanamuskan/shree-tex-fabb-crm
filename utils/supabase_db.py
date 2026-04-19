@@ -1,9 +1,18 @@
 import os
 import re
 import time
+from datetime import datetime, timezone
 
 import streamlit as st
 from supabase import Client, create_client
+
+# Tables where delete_record() performs a soft delete (sets deleted_at)
+# instead of a hard DELETE. Adding a table here also makes _fetch_raw_rows()
+# filter out rows with deleted_at IS NOT NULL, so the rest of the app
+# never sees soft-deleted rows unless it explicitly queries the recycle bin.
+# Schema requirement: each listed table must have a nullable
+# TIMESTAMPTZ deleted_at column (see supabase/migrations/safety.sql).
+SOFT_DELETE_TABLES = {"parts", "customers", "sales_records", "purchase_records"}
 
 from utils.constants import (
     ATTENDANCE_HEADERS, ATTENDANCE_TAB, CATEGORIES_HEADERS, CATEGORIES_TAB,
@@ -110,13 +119,29 @@ def _fetch_raw_rows(table_name):
     resolved = _resolve_table_name(table_name)
     if resolved in _PAGE_CACHE:
         return _PAGE_CACHE[resolved]
+    sb = get_supabase()
     try:
-        sb = get_supabase()
-        response = sb.table(resolved).select("*").limit(10000).execute()
+        query = sb.table(resolved).select("*")
+        if resolved in SOFT_DELETE_TABLES:
+            query = query.is_("deleted_at", "null")
+        response = query.limit(10000).execute()
         data = response.data if response.data else []
         _PAGE_CACHE[resolved] = data
         return data
     except Exception as exc:
+        # Graceful degradation: if the soft-delete migration hasn't been
+        # applied yet, the deleted_at column doesn't exist and the filtered
+        # query fails. Fall back to an unfiltered fetch so the app keeps
+        # working. Once safety.sql is applied, this branch is never hit.
+        if resolved in SOFT_DELETE_TABLES and "deleted_at" in str(exc).lower():
+            try:
+                response = sb.table(resolved).select("*").limit(10000).execute()
+                data = response.data if response.data else []
+                _PAGE_CACHE[resolved] = data
+                return data
+            except Exception as exc2:
+                st.error(f"Database error fetching {table_name}: {exc2}")
+                return []
         st.error(f"Database error fetching {table_name}: {exc}")
         return []
 
@@ -150,18 +175,93 @@ def update_record(table_name, record_dict, match_column, match_value):
 
 
 def delete_record(table_name, match_column, match_value=None):
+    """Remove a row. Soft-delete (set deleted_at = now()) for tables listed in
+    SOFT_DELETE_TABLES; hard DELETE for everything else. Callers don't need to
+    change — the row stops appearing in fetch_table() either way."""
     try:
         sb = get_supabase()
-        query = sb.table(_resolve_table_name(table_name)).delete()
+        resolved = _resolve_table_name(table_name)
         if match_value is None:
             match_value = match_column
             match_column = "id"
-        result = query.eq(match_column, match_value).execute()
-        _invalidate_cache(_resolve_table_name(table_name))  # ← fresh data on next fetch
+        if resolved in SOFT_DELETE_TABLES:
+            try:
+                result = sb.table(resolved).update(
+                    {"deleted_at": datetime.now(timezone.utc).isoformat()}
+                ).eq(match_column, match_value).execute()
+            except Exception as exc:
+                # Migration not yet applied — deleted_at column missing. Fall
+                # back to hard delete so the UI still responds; user gets the
+                # old behavior until safety.sql is run in Supabase.
+                if "deleted_at" in str(exc).lower():
+                    result = sb.table(resolved).delete().eq(match_column, match_value).execute()
+                else:
+                    raise
+        else:
+            result = sb.table(resolved).delete().eq(match_column, match_value).execute()
+        _invalidate_cache(resolved)  # ← fresh data on next fetch
         return result
     except Exception as exc:
         st.error(f"Delete error: {exc}")
         return None
+
+
+def hard_delete_record(table_name, match_column, match_value=None):
+    """Permanently remove a row, bypassing soft-delete. Used by the Recycle Bin
+    admin page to purge rows that were already soft-deleted."""
+    try:
+        sb = get_supabase()
+        if match_value is None:
+            match_value = match_column
+            match_column = "id"
+        resolved = _resolve_table_name(table_name)
+        result = sb.table(resolved).delete().eq(match_column, match_value).execute()
+        _invalidate_cache(resolved)
+        return result
+    except Exception as exc:
+        st.error(f"Hard delete error: {exc}")
+        return None
+
+
+def restore_record(table_name, match_column, match_value=None):
+    """Restore a soft-deleted row by clearing deleted_at."""
+    try:
+        sb = get_supabase()
+        if match_value is None:
+            match_value = match_column
+            match_column = "id"
+        resolved = _resolve_table_name(table_name)
+        result = sb.table(resolved).update({"deleted_at": None}).eq(match_column, match_value).execute()
+        _invalidate_cache(resolved)
+        return result
+    except Exception as exc:
+        st.error(f"Restore error: {exc}")
+        return None
+
+
+def fetch_soft_deleted(table_name):
+    """Fetch rows in the recycle bin (deleted_at IS NOT NULL) for one table.
+    Returns [] if the table is not a soft-delete table, or if the column
+    doesn't exist yet (migration not applied)."""
+    resolved = _resolve_table_name(table_name)
+    if resolved not in SOFT_DELETE_TABLES:
+        return []
+    try:
+        sb = get_supabase()
+        response = (
+            sb.table(resolved)
+            .select("*")
+            .not_.is_("deleted_at", "null")
+            .order("deleted_at", desc=True)
+            .limit(10000)
+            .execute()
+        )
+        return response.data or []
+    except Exception as exc:
+        if "deleted_at" in str(exc).lower():
+            return []  # migration not applied yet — silently empty
+        st.error(f"Recycle bin fetch error for {table_name}: {exc}")
+        return []
 
 
 def bulk_insert(table_name, list_of_dicts):
