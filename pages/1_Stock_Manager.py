@@ -894,7 +894,6 @@ if check_admin_access():
                         st.write(f"DEBUG result: {result}")
                     st.session_state["_admin_img_ver"] = _admin_img_ver + 1
                     st.success("✅ Image saved!")
-                    st.rerun()
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
