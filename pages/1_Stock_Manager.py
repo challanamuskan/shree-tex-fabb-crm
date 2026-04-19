@@ -36,7 +36,7 @@ from utils.ui import check_admin_access, init_page
 
 require_login()
 init_page("Stock Manager")
-st.title("Stock Manager")
+st.title("Stock Manager v2.0 ✅")
 
 
 def to_int(value):
