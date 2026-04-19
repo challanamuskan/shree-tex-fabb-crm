@@ -899,10 +899,9 @@ if check_admin_access():
                     img.save(buf_out, format="JPEG", quality=30)
                     b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
                     update_record("parts", {"image": b64}, "id", _img_part_key)
-                    st.image(edit_image_file, width=200, caption="Preview")
-                    st.success("✅ Image saved! Refresh to see it.")
+                    st.image(edit_image_file, width=200, caption="✅ Saved!")
                 except Exception as ex:
-                    st.error(f"Error: {ex}")
+                    st.error(f"Error saving image: {ex}")
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
