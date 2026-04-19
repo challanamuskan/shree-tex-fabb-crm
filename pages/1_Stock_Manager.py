@@ -882,32 +882,30 @@ if check_admin_access():
                     st.rerun()
 
             st.markdown("**📸 Upload Part Image**")
+            _img_part_key = str(selected_part_rows[0]["_row"])
             edit_image_file = st.file_uploader(
                 "Upload Part Image (optional)",
                 type=["jpg", "jpeg", "png", "webp"],
-                key=f"admin_part_image_{_part_key}",
+                key=f"admin_img_{_img_part_key}",
             )
+            # Store bytes immediately on upload — survives button-click rerun
             if edit_image_file is not None:
-                raw = edit_image_file.getvalue()
-                st.session_state["_admin_img_bytes"] = raw
-                st.session_state["_admin_img_part_id"] = selected_part_rows[0]["_row"]
+                st.session_state[f"_imgbytes_{_img_part_key}"] = edit_image_file.getvalue()
                 st.image(edit_image_file, width=200, caption="Preview")
 
-            if st.session_state.get("_admin_img_bytes") and st.session_state.get("_admin_img_part_id") == selected_part_rows[0]["_row"]:
+            _stored_bytes = st.session_state.get(f"_imgbytes_{_img_part_key}")
+            if _stored_bytes:
                 if st.button("💾 Save Image", key="save_image_btn"):
                     import base64, io
                     from PIL import Image as PILImage
                     try:
-                        raw = st.session_state["_admin_img_bytes"]
-                        img = PILImage.open(io.BytesIO(raw)).convert("RGB")
+                        img = PILImage.open(io.BytesIO(_stored_bytes)).convert("RGB")
                         img.thumbnail((150, 150))
                         buf_out = io.BytesIO()
                         img.save(buf_out, format="JPEG", quality=30)
                         b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
-                        part_id = st.session_state["_admin_img_part_id"]
-                        update_record("parts", {"image": b64}, "id", part_id)
-                        st.session_state.pop("_admin_img_bytes", None)
-                        st.session_state.pop("_admin_img_part_id", None)
+                        update_record("parts", {"image": b64}, "id", _img_part_key)
+                        st.session_state.pop(f"_imgbytes_{_img_part_key}", None)
                         st.success("✅ Image saved!")
                         st.rerun()
                     except Exception as ex:
