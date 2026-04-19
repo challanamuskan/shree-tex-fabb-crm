@@ -257,11 +257,6 @@ except Exception:
 _pending = st.session_state.get("_pending_img_upload")
 if "_pending_img_upload" in st.session_state:
     del st.session_state["_pending_img_upload"]
-# FIND (around line 130):
-if _pending:
-    update_record("parts", {"image_url": ""}, "id", _pending["row_id"])
-
-# REPLACE WITH:
 if _pending:
     import base64, io
     from PIL import Image as PILImage
