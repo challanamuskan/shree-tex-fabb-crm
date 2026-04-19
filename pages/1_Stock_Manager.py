@@ -321,9 +321,12 @@ for cat in categories_list:
             row_id = row.get("_row", "")
             img_col, info_col, upload_col = st.columns([1, 4, 2])
             with img_col:
-                image_url = str(row.get("image_url", "") or "").strip()
-                if image_url:
-                    st.image(image_url, width=64)
+                image_b64 = str(row.get("image", "") or "").strip()
+                if image_b64:
+                    try:
+                        st.image(base64.b64decode(image_b64), width=64)
+                    except Exception:
+                        pass
             with info_col:
                 st.markdown(
                     f"**{row.get('Part_Name', '')}** &nbsp;|&nbsp; "
@@ -890,18 +893,27 @@ if check_admin_access():
 
             st.markdown("**📸 Upload Part Image**")
             _img_part_key = selected_part_rows[0]["_row"]
-            edit_image_file = st.file_uploader(
-                "Upload Part Image",
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"admin_img_{_img_part_key}",
-            )
-            if edit_image_file is not None:
-                saved = _compress_and_save_part_image(
-                    _img_part_key,
-                    edit_image_file,
-                    f"_saved_admin_img_{_img_part_key}",
+            with st.form(f"admin_img_form_{_img_part_key}", clear_on_submit=True):
+                edit_image_file = st.file_uploader(
+                    "Upload Part Image",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"admin_img_{_img_part_key}",
                 )
-                st.image(edit_image_file, width=200, caption="✅ Saved!" if saved else "Already saved")
+                submit_img = st.form_submit_button("Save Image")
+                if submit_img:
+                    if edit_image_file is None:
+                        st.warning("Please choose an image file first.")
+                    else:
+                        saved = _compress_and_save_part_image(
+                            _img_part_key,
+                            edit_image_file,
+                            f"_saved_admin_img_{_img_part_key}",
+                        )
+                        if saved:
+                            st.image(edit_image_file, width=200, caption="✅ Saved!")
+                            st.success("Image saved to database.")
+                        else:
+                            st.error("Image not saved.")
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
