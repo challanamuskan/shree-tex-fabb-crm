@@ -895,6 +895,7 @@ if check_admin_access():
 
             _stored_bytes = st.session_state.get(f"_imgbytes_{_img_part_key}")
             if _stored_bytes:
+                st.info(f"DEBUG: bytes ready, length={len(_stored_bytes)}, part={_img_part_key}")
                 if st.button("💾 Save Image", key="save_image_btn"):
                     import base64, io
                     from PIL import Image as PILImage
