@@ -1,10 +1,41 @@
 from utils.supabase_db import update_part_image
 import base64
+import io
 import json
 from datetime import date
 
 import pandas as pd
 import streamlit as st
+from PIL import Image as PILImage
+
+
+def _compress_and_save_part_image(row_id, uploaded_file, fingerprint_key):
+    """Compress uploaded image and save to parts.image column immediately.
+    Uses a per-row fingerprint in session_state (small string only — never bytes)
+    to avoid redundant writes when Streamlit reruns with the uploader still populated.
+    Returns True on successful save, False if already saved or on error.
+    """
+    if uploaded_file is None:
+        return False
+    try:
+        raw = uploaded_file.getvalue()
+    except Exception:
+        return False
+    fingerprint = f"{len(raw)}:{getattr(uploaded_file, 'name', '')}"
+    if st.session_state.get(fingerprint_key) == fingerprint:
+        return False
+    try:
+        img = PILImage.open(io.BytesIO(raw)).convert("RGB")
+        img.thumbnail((150, 150))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=30)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        update_part_image(row_id, b64)
+        st.session_state[fingerprint_key] = fingerprint
+        return True
+    except Exception as ex:
+        st.error(f"Image save failed: {ex}")
+        return False
 
 if "username" not in st.session_state or not st.session_state.get("username"):
     st.warning("Please login first.")
@@ -253,23 +284,6 @@ try:
 except Exception:
     pass  # Silent fail — don't crash the page if sync fails
 
-# ── Process any pending part-image upload (queued from Current Stock loop) ──
-_pending = st.session_state.get("_pending_img_upload")
-if "_pending_img_upload" in st.session_state:
-    del st.session_state["_pending_img_upload"]
-if _pending:
-    import base64, io
-    from PIL import Image as PILImage
-    try:
-        img = PILImage.open(io.BytesIO(_pending["data"])).convert("RGB")
-        img.thumbnail((150, 150))
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=30)
-        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-        update_part_image(_pending["row_id"], b64)
-    except Exception as ex:
-        st.error(f"Image save failed: {ex}")
-
 st.subheader("Current Stock")
 try:
     parts_tab_records = parts
@@ -319,24 +333,17 @@ for cat in categories_list:
                 )
             with upload_col:
                 st.caption("📷 upload image")
-                _img_ver = st.session_state.get("_img_upload_ver", 0)
                 uploaded_img = st.file_uploader(
                     "Upload image",
                     type=["jpg", "jpeg", "png", "webp"],
-                    key=f"stock_img_{row_id}_v{_img_ver}",
+                    key=f"stock_img_{row_id}",
                     label_visibility="collapsed",
                 )
                 if uploaded_img is not None:
-                    # Queue upload — processed at page-top on next run, widget key
-                    # is versioned so it resets to empty after the rerun.
-                    st.session_state["_pending_img_upload"] = {
-                        "row_id": row_id,
-                        "part_name": str(row.get("Part_Name", "")),
-                        "category": str(row.get("Category", "")),
-                        "data": uploaded_img.getvalue(),
-                    }
-                    st.session_state["_img_upload_ver"] = _img_ver + 1
-                    st.rerun()
+                    if _compress_and_save_part_image(
+                        row_id, uploaded_img, f"_saved_stock_img_{row_id}"
+                    ):
+                        st.success("✅ Saved")
 
 st.subheader("Section A - Category Manager")
 if categories:
@@ -882,26 +889,19 @@ if check_admin_access():
                     st.rerun()
 
             st.markdown("**📸 Upload Part Image**")
-            _img_part_key = str(selected_part_rows[0]["_row"])
+            _img_part_key = selected_part_rows[0]["_row"]
             edit_image_file = st.file_uploader(
                 "Upload Part Image",
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"admin_img_{_img_part_key}",
             )
             if edit_image_file is not None:
-                import base64, io
-                from PIL import Image as PILImage
-                try:
-                    raw = edit_image_file.getvalue()
-                    img = PILImage.open(io.BytesIO(raw)).convert("RGB")
-                    img.thumbnail((150, 150))
-                    buf_out = io.BytesIO()
-                    img.save(buf_out, format="JPEG", quality=30)
-                    b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
-                    update_record("parts", {"image": b64}, "id", _img_part_key)
-                    st.image(edit_image_file, width=200, caption="✅ Saved!")
-                except Exception as ex:
-                    st.error(f"Error saving image: {ex}")
+                saved = _compress_and_save_part_image(
+                    _img_part_key,
+                    edit_image_file,
+                    f"_saved_admin_img_{_img_part_key}",
+                )
+                st.image(edit_image_file, width=200, caption="✅ Saved!" if saved else "Already saved")
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
