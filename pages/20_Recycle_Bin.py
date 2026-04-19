@@ -7,12 +7,7 @@ if "username" not in st.session_state or not st.session_state.get("username"):
 import pandas as pd
 
 from utils.auth import is_admin, require_login
-from utils.supabase_db import (
-    SOFT_DELETE_TABLES,
-    fetch_soft_deleted,
-    hard_delete_record,
-    restore_record,
-)
+from utils.supabase_db import fetch_soft_deleted, hard_delete_record, restore_record
 from utils.ui import init_page
 
 require_login()
@@ -29,68 +24,104 @@ TABLE_LABELS = {
     "sales_records": "Sales Records",
     "purchase_records": "Purchase Records",
 }
-# Human-readable description per row, keyed by source table.
+
 ROW_DESCRIBERS = {
-    "parts": lambda r: f"{r.get('part_name') or '—'} · {r.get('category') or '—'} · qty {r.get('quantity') or 0}",
-    "customers": lambda r: f"{r.get('name') or r.get('business_name') or '—'} · {r.get('phone') or '—'}",
-    "sales_records": lambda r: f"{r.get('date','')} · {r.get('part_name') or '—'} → {r.get('party_name') or '—'} · ₹{r.get('total_sale_value') or 0}",
-    "purchase_records": lambda r: f"{r.get('date','')} · {r.get('part_name') or '—'} ← {r.get('supplier_name') or '—'} · ₹{r.get('total_purchase_value') or 0}",
+    "parts": lambda r: (
+        f"{r.get('part_name') or '—'} · {r.get('category') or '—'} · qty {r.get('quantity') or 0}"
+    ),
+    "customers": lambda r: (
+        f"{r.get('name') or r.get('business_name') or '—'} · {r.get('phone') or '—'}"
+    ),
+    "sales_records": lambda r: (
+        f"{r.get('date', '')} · {r.get('part_name') or '—'} → "
+        f"{r.get('party_name') or '—'} · ₹{r.get('total_sale_value') or 0}"
+    ),
+    "purchase_records": lambda r: (
+        f"{r.get('date', '')} · {r.get('part_name') or '—'} ← "
+        f"{r.get('supplier_name') or '—'} · ₹{r.get('total_purchase_value') or 0}"
+    ),
 }
 
 st.caption(
-    "Rows soft-deleted via the app. **Restore** returns a row to the live data; "
+    "Rows soft-deleted via the app. **Restore** returns a row to live data; "
     "**Delete forever** removes it permanently and cannot be undone."
 )
 
-# Quick summary across all four tables.
-summary = {label: len(fetch_soft_deleted(t)) for t, label in TABLE_LABELS.items()}
-total = sum(summary.values())
+# ── Fetch ALL soft-deleted rows once, before any rendering ──────────
+bin_data: dict[str, list] = {
+    table: fetch_soft_deleted(table) for table in TABLE_LABELS
+}
+total = sum(len(rows) for rows in bin_data.values())
+
 if total == 0:
     st.success("Recycle bin is empty.")
     st.stop()
 
-cols = st.columns(len(summary))
-for (label, count), col in zip(summary.items(), cols):
-    col.metric(label, count)
+# ── Summary metrics ──────────────────────────────────────────────────
+metric_cols = st.columns(len(TABLE_LABELS))
+for col, (table, label) in zip(metric_cols, TABLE_LABELS.items()):
+    col.metric(label, len(bin_data[table]))
 
 st.markdown("---")
 
-tabs = st.tabs([f"{label} ({summary[label]})" for label in TABLE_LABELS.values()])
-for (table, label), tab in zip(TABLE_LABELS.items(), tabs):
+# ── One tab per table ────────────────────────────────────────────────
+tab_labels = [
+    f"{label} ({len(bin_data[table])})"
+    for table, label in TABLE_LABELS.items()
+]
+tabs = st.tabs(tab_labels)
+
+for tab, (table, label) in zip(tabs, TABLE_LABELS.items()):
+    rows = bin_data[table]
     with tab:
-        rows = fetch_soft_deleted(table)
         if not rows:
             st.info(f"No deleted {label.lower()}.")
-            continue
+        else:
+            describe = ROW_DESCRIBERS[table]
 
-        describe = ROW_DESCRIBERS[table]
-
-        for row in rows:
-            row_id = row.get("id")
-            deleted_at = str(row.get("deleted_at") or "")[:19].replace("T", " ")
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([5, 1, 1])
-                with c1:
-                    st.markdown(f"**{describe(row)}**")
-                    st.caption(f"Deleted at {deleted_at} · id `{row_id}`")
-                with c2:
-                    if st.button("♻️ Restore", key=f"restore_{table}_{row_id}"):
-                        if restore_record(table, "id", row_id) is not None:
-                            st.success(f"Restored to {label}.")
-                            st.rerun()
-                with c3:
-                    confirm_key = f"confirm_purge_{table}_{row_id}"
-                    if st.session_state.get(confirm_key):
-                        if st.button("🔥 Confirm", key=f"purge_{table}_{row_id}"):
-                            if hard_delete_record(table, "id", row_id) is not None:
-                                st.session_state.pop(confirm_key, None)
-                                st.success("Permanently deleted.")
+            for row in rows:
+                row_id = row.get("id")
+                deleted_at = str(row.get("deleted_at") or "")[:19].replace("T", " ")
+                with st.container(border=True):
+                    c_info, c_restore, c_delete = st.columns([5, 1, 1])
+                    with c_info:
+                        st.markdown(f"**{describe(row)}**")
+                        st.caption(f"Deleted {deleted_at} · `{row_id}`")
+                    with c_restore:
+                        if st.button("♻️", key=f"restore_{table}_{row_id}", help="Restore"):
+                            result = restore_record(table, "id", row_id)
+                            if result is not None:
+                                st.toast(f"Restored to {label}.", icon="♻️")
                                 st.rerun()
-                    else:
-                        if st.button("🗑️ Delete forever", key=f"ask_purge_{table}_{row_id}"):
-                            st.session_state[confirm_key] = True
-                            st.rerun()
+                            else:
+                                st.error("Restore failed.")
+                    with c_delete:
+                        confirm_key = f"_confirm_purge_{table}_{row_id}"
+                        if st.session_state.get(confirm_key):
+                            if st.button(
+                                "✅ Yes, delete",
+                                key=f"purge_{table}_{row_id}",
+                                type="primary",
+                            ):
+                                result = hard_delete_record(table, "id", row_id)
+                                if result is not None:
+                                    st.session_state.pop(confirm_key, None)
+                                    st.toast("Permanently deleted.", icon="🗑️")
+                                    st.rerun()
+                                else:
+                                    st.error("Delete failed.")
+                        else:
+                            if st.button(
+                                "🗑️",
+                                key=f"ask_purge_{table}_{row_id}",
+                                help="Delete forever",
+                            ):
+                                st.session_state[confirm_key] = True
+                                st.rerun()
 
-        with st.expander(f"View raw data for {label}"):
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            with st.expander(f"Raw data ({len(rows)} rows)"):
+                st.dataframe(
+                    pd.DataFrame(rows).drop(columns=["deleted_at"], errors="ignore"),
+                    use_container_width=True,
+                    hide_index=True,
+                )
