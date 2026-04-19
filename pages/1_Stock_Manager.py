@@ -895,6 +895,7 @@ if check_admin_access():
                     image_b64 = base64.b64encode(buf.getvalue()).decode()
                     for row in selected_part_rows:
                         result = update_record("parts", {"image": image_b64}, "id", row["_row"])
+                        st.write(f"DEBUG result: {result}")
                     st.session_state["_admin_img_ver"] = _admin_img_ver + 1
                     st.success("✅ Image saved!")
                     st.rerun()
