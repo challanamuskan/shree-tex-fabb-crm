@@ -891,19 +891,18 @@ if check_admin_access():
             if edit_image_file is not None:
                 import base64, io
                 from PIL import Image as PILImage
-                st.image(edit_image_file, width=200, caption="Preview")
-                if st.button("💾 Save Image", key="save_image_btn"):
-                    try:
-                        raw = edit_image_file.getvalue()
-                        img = PILImage.open(io.BytesIO(raw)).convert("RGB")
-                        img.thumbnail((150, 150))
-                        buf_out = io.BytesIO()
-                        img.save(buf_out, format="JPEG", quality=30)
-                        b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
-                        update_record("parts", {"image": b64}, "id", _img_part_key)
-                        st.success("✅ Image saved!")
-                    except Exception as ex:
-                        st.error(f"Error: {ex}")
+                try:
+                    raw = edit_image_file.getvalue()
+                    img = PILImage.open(io.BytesIO(raw)).convert("RGB")
+                    img.thumbnail((150, 150))
+                    buf_out = io.BytesIO()
+                    img.save(buf_out, format="JPEG", quality=30)
+                    b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
+                    update_record("parts", {"image": b64}, "id", _img_part_key)
+                    st.image(edit_image_file, width=200, caption="Preview")
+                    st.success("✅ Image saved! Refresh to see it.")
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
