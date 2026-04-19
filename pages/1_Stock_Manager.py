@@ -882,28 +882,34 @@ if check_admin_access():
                     st.rerun()
 
             st.markdown("**📸 Upload Part Image**")
-            _admin_img_ver = st.session_state.get("_admin_img_ver", 0)
             edit_image_file = st.file_uploader(
                 "Upload Part Image (optional)",
                 type=["jpg", "jpeg", "png", "webp"],
-                key=f"admin_part_image_upload_v{_admin_img_ver}",
+                key=f"admin_part_image_{_part_key}",
             )
             if edit_image_file is not None:
+                raw = edit_image_file.getvalue()
+                st.session_state["_admin_img_bytes"] = raw
+                st.session_state["_admin_img_part_id"] = selected_part_rows[0]["_row"]
                 st.image(edit_image_file, width=200, caption="Preview")
+
+            if st.session_state.get("_admin_img_bytes") and st.session_state.get("_admin_img_part_id") == selected_part_rows[0]["_row"]:
                 if st.button("💾 Save Image", key="save_image_btn"):
                     import base64, io
                     from PIL import Image as PILImage
                     try:
-                        raw = edit_image_file.getvalue()
-                        buf_in = io.BytesIO(raw)
-                        img = PILImage.open(buf_in).convert("RGB")
+                        raw = st.session_state["_admin_img_bytes"]
+                        img = PILImage.open(io.BytesIO(raw)).convert("RGB")
                         img.thumbnail((150, 150))
                         buf_out = io.BytesIO()
                         img.save(buf_out, format="JPEG", quality=30)
                         b64 = base64.b64encode(buf_out.getvalue()).decode("utf-8")
-                        part_id = selected_part_rows[0]["_row"]
+                        part_id = st.session_state["_admin_img_part_id"]
                         update_record("parts", {"image": b64}, "id", part_id)
-                        st.success("✅ Saved!")
+                        st.session_state.pop("_admin_img_bytes", None)
+                        st.session_state.pop("_admin_img_part_id", None)
+                        st.success("✅ Image saved!")
+                        st.rerun()
                     except Exception as ex:
                         st.error(f"Error: {ex}")
 
