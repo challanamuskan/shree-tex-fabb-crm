@@ -257,11 +257,7 @@ _pending = st.session_state.get("_pending_img_upload")
 if "_pending_img_upload" in st.session_state:
     del st.session_state["_pending_img_upload"]
 if _pending:
-    # Placeholder: image_url always empty, feature coming soon
     update_record("parts", {"image_url": ""}, "id", _pending["row_id"])
-    st.info(f"Image upload feature coming soon. Upload for **{_pending['part_name']}** queued.")
-
-st.info("📷 **Image upload feature coming soon** — upload widget is available but images are not yet saved.")
 
 st.subheader("Current Stock")
 try:
