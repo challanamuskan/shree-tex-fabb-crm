@@ -880,19 +880,22 @@ if check_admin_access():
             if edit_image_file is not None:
                 st.image(edit_image_file, width=200, caption="Preview")
                 if st.button("💾 Save Image", key="save_image_btn"):
-                    import base64, io
-                    from PIL import Image as PILImage
-                    img = PILImage.open(edit_image_file)
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                    img.thumbnail((400, 400))
-                    buf = io.BytesIO()
-                    img.save(buf, format="JPEG", quality=60)
-                    image_b64 = base64.b64encode(buf.getvalue()).decode()
-                    for row in selected_part_rows:
-                        result = update_record("parts", {"image": image_b64}, "id", row["_row"])
-                    st.session_state["_admin_img_ver"] = _admin_img_ver + 1
-                    st.success("✅ Image saved!")
+                    try:
+                        import base64, io
+                        from PIL import Image as PILImage
+                        edit_image_file.seek(0)
+                        img = PILImage.open(edit_image_file)
+                        if img.mode != "RGB":
+                            img = img.convert("RGB")
+                        img.thumbnail((200, 200))
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=40)
+                        image_b64 = base64.b64encode(buf.getvalue()).decode()
+                        for row in selected_part_rows:
+                            update_record("parts", {"image": image_b64}, "id", row["_row"])
+                        st.success("✅ Image saved!")
+                    except Exception as e:
+                        st.error(f"Failed: {e}")
 
             if st.button("Delete Part", key="admin_delete_part"):
                 for row in sorted(selected_part_rows, key=lambda x: x["_row"], reverse=True):
