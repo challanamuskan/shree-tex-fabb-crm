@@ -2,7 +2,7 @@
 
 An internal CRM for Satyam Tex Fabb — a 30-year-old textile machinery parts dealer in Bhilwara, Rajasthan. Built to replace Tally + WhatsApp chaos with a single, organised system for stock, sales, customers, staff, and analytics.
 
-**Live:** [satyam-tex-fabb.streamlit.app](https://satyam-tex-fabb.streamlit.app)
+**Live:** [satyamtexfab-crm.streamlit.app](https://satyamtexfab-crm.streamlit.app)
 **Repo:** [challanamuskan/shree-tex-fabb-crm](https://github.com/challanamuskan/shree-tex-fabb-crm)
 
 ---
