@@ -213,6 +213,17 @@ else:
     st.info("No email activity yet.")
 
 st.markdown("---")
+
+with st.container(border=True):
+    st.markdown(
+        "<div style='font-size:2rem;line-height:1'>💬</div>"
+        "<strong style='font-size:1.05rem'>WhatsApp Chat Parser</strong>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Upload WhatsApp Business exports. Auto-extracts leads, phone numbers, and follow-ups. Powered by Supabase.")
+    st.page_link("pages/21_WhatsApp_Parser.py", label="Go to →")
+
+st.markdown("---")
 st.caption(
     "Use the left sidebar to switch pages: Stock Manager, Sales, Purchases, Returns, Customers & Leads, "
     "Payments, Purchase Orders, Payment Reminders, Promotional Emails, Calendar, MIS System, Data Export & Import."

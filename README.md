@@ -39,6 +39,7 @@ Manages **2,000+ part inventory** across 49 categories, multiple suppliers, fiel
 | 👤 Employee Management | Add/remove staff; roles; attendance tracking; daily activity logs |
 | 🔐 User Management | Admin/Employee RBAC; SHA-256 hashing; forced password reset |
 | 📤 Export/Import | Excel + CSV export; bulk import with progress bar; Tally-compatible format |
+| 💬 WhatsApp Chat Parser | Upload WhatsApp Business .txt exports. Auto-detects lead intents (Order Inquiry, Price Inquiry, Follow Up, Complaint). All messages stored in Supabase with date, sender, and phone extraction. |
 
 ---
 
@@ -108,6 +109,15 @@ Hosted on Streamlit Community Cloud. Pushes to `main` trigger automatic redeploy
 - **[indian-sme-crm-template](https://github.com/challanamuskan/indian-sme-crm-template)** — Earlier version with Google Sheets backend — easier to fork and adapt
 - **[sme-inbox-parser](https://github.com/challanamuskan/sme-inbox-parser)** — Parse WhatsApp + Gmail + website leads into CRM CSV
 - **[awesome-indian-sme-tools](https://github.com/challanamuskan/awesome-indian-sme-tools)** — Curated toolkit for Indian SME software builders
+
+---
+
+---
+
+## Changelog
+
+### v2.1 — May 2026
+- Added WhatsApp Business Chat Parser with Supabase storage, dual-format parsing, and intent detection
 
 ---
 
