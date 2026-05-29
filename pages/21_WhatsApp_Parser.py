@@ -110,6 +110,9 @@ if uploaded_file:
 
     df = pd.DataFrame(rows)
 
+    if len(df) == 0:
+        st.warning("No messages parsed. Check file format — must be WhatsApp .txt export.")
+
     # Stats
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Messages", len(df))
@@ -118,7 +121,7 @@ if uploaded_file:
         "Date Range",
         f"{df['message_date'].min()} → {df['message_date'].max()}" if len(df) else "—",
     )
-    col4.metric("Phone Numbers Found", df["phone_number"].notna().sum())
+    col4.metric("Phone Numbers Found", df["phone_number"].notna().sum() if len(df) > 0 and "phone_number" in df.columns else 0)
 
     st.subheader("Intent Breakdown")
     intent_cols = st.columns(5)
@@ -127,7 +130,8 @@ if uploaded_file:
         intent_cols[i].metric(intent, count)
 
     st.subheader("Parsed Messages Preview")
-    st.dataframe(df, use_container_width=True, height=400)
+    if len(df) > 0:
+        st.dataframe(df, use_container_width=True, height=400)
 
     # ── SAVE ─────────────────────────────────────────────────────────────────
     if st.button("💾 Save to Supabase", type="primary"):
