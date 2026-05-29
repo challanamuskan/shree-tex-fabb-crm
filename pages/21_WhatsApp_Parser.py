@@ -113,7 +113,7 @@ if uploaded_file:
     # Stats
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Messages", len(df))
-    col2.metric("Unique Senders", df["sender_name"].nunique())
+    col2.metric("Unique Senders", df["sender_name"].nunique() if "sender_name" in df.columns else 0)
     col3.metric(
         "Date Range",
         f"{df['message_date'].min()} → {df['message_date'].max()}" if len(df) else "—",
